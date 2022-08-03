@@ -1,0 +1,18 @@
+{
+    "os": "Windows-10-10.0.19044-SP0",
+    "python": "3.9.13",
+    "heartbeatAt": "2022-06-22T07:38:37.573891",
+    "startedAt": "2022-06-22T07:38:36.942555",
+    "docker": null,
+    "gpu": "NVIDIA GeForce RTX 2080 Ti",
+    "gpu_count": 1,
+    "cpu_count": 20,
+    "cuda": null,
+    "args": [],
+    "state": "running",
+    "program": "C:\\Users\\Cristina\\Desktop\\MSLesions3D\\lesions3d\\wandb_lightning_test2.py",
+    "codePath": "wandb_lightning_test2.py",
+    "host": "Beast",
+    "username": "Cristina",
+    "executable": "C:\\Users\\Cristina\\anaconda3\\envs\\pantzer\\python.exe"
+}

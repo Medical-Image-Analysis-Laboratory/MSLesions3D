@@ -1,0 +1,18 @@
+{
+    "os": "Windows-10-10.0.19044-SP0",
+    "python": "3.9.13",
+    "heartbeatAt": "2022-06-22T10:10:33.578135",
+    "startedAt": "2022-06-22T10:10:30.399137",
+    "docker": null,
+    "gpu": "NVIDIA GeForce RTX 2080 Ti",
+    "gpu_count": 1,
+    "cpu_count": 20,
+    "cuda": null,
+    "args": null,
+    "state": "running",
+    "program": "C:/Users/Cristina/Desktop/MSLesions3D/lesions3d/train.py",
+    "codePath": "train.py",
+    "host": "Beast",
+    "username": "Cristina",
+    "executable": "C:\\Users\\Cristina\\anaconda3\\envs\\pantzer\\python.exe"
+}
