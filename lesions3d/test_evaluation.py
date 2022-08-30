@@ -3,6 +3,9 @@
 Created on Fri Jun 10 10:31:15 2022
 
 @author: Maxence Wynen
+
+THIS FILE IS TO TEST IF THE METRICS ARE BUG FREE
+
 """
 
 import torch
@@ -12,7 +15,7 @@ from copy import copy
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
-def test_metric(predict_subset, modif_lambda=lambda x: x, n_fp_per_image = 0):
+def test_metric(predict_subset = "train", modif_lambda=lambda x: x, n_fp_per_image = 0):
     n_classes = 1
     dataset = ExampleDataset(n_classes = n_classes, percentage = 1., cache=False)
     dataset.batch_size = 16

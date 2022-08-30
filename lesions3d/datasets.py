@@ -356,8 +356,8 @@ def stats_foreground(ds, show=False):
 
 
 class ExampleDataset(pl.LightningDataModule):
-    def __init__(self, n_classes=1, objects="multiple", percentage=1., augment=False, batch_size=8,
-                 num_workers=int(os.cpu_count() / 2), verbose=False,
+    def __init__(self, n_classes=1, objects="multiple", percentage=1., augmentations=None, batch_size=8,
+                 num_workers=int(os.cpu_count() / 2), verbose=False, show=False,
                  random_state=970205, cache=False, subject=None):
 
         super().__init__()
@@ -373,47 +373,60 @@ class ExampleDataset(pl.LightningDataModule):
         self.num_workers = num_workers
         self.random_state = random_state
         self.cache = cache
-        self.augment = augment
+        # self.augment = augment
         self.percentage = percentage
-        self.subjects_list = [s.replace("sub-", "")[:4] for s in os.listdir(pjoin(self.data_dir, "images")) if
-                              "sub-" in s]
+        self.verbose = verbose
+        self.segmentation_mode="classes"
+        self.n_classes = n_classes
+        self.augmentations = augmentations
+        self.show=show
+        self.subjects_list = [s.replace("sub-", "")[:4] for s in os.listdir(pjoin(self.data_dir, "images")) if "sub-" in s]
         self.subjects_list = self.subjects_list[:int(percentage * len(self.subjects_list))] if percentage > 0 \
             else self.subjects_list
         self.subject = subject
 
-        if verbose:
-            self.test_transform = Compose([
-                Lambdad(keys=["img"], func=Printer("Loading Image")),
-                LoadImaged(keys=["img", "seg"]),
-                # Orientationd(keys=["img", "seg"], axcodes="PLI"),
-                Lambdad(keys=["subject"], func=Printer("Adding Channel")),
-                AddChanneld(keys=["img"]),
-                Lambdad(keys=["subject"], func=Printer("Generating Bounding Boxes")),
-                BoundingBoxesGeneratord(keys="seg", segmentation_mode="classes", n_classes=n_classes),
-                Lambdad(keys=["subject"], func=Printer("Scaling Intensity")),
-                ScaleIntensityd(keys=['img']),
-                Lambdad(keys=["subject"], func=Printer("To Tensor")),
-                ToTensord(keys=["img"])
-            ])
-        else:
-            self.test_transform = Compose([
-                LoadImaged(keys=["img", "seg"]),
-                # Orientationd(keys=["img", "seg"], axcodes="PLI"),
-                AddChanneld(keys=["img"]),
-                BoundingBoxesGeneratord(keys="seg", segmentation_mode="classes", n_classes=n_classes),
-                ScaleIntensityd(keys=['img']),
-                ToTensord(keys=["img"])
-            ])
-
-        if not augment:
-            self.train_transform = self.test_transform
-        else:
-            raise NotImplementedError()
+        self.train_transform = Compose(self.get_list_of_transforms("train"))
+        self.test_transform = Compose(self.get_list_of_transforms("test"))
 
         self.dl_dict = {'batch_size': self.batch_size, 'num_workers': self.num_workers}
 
-    def prepare_data(self):
-        pass
+    def get_list_of_transforms(self, mode):
+        """
+        Return list of transforms for both train and test datasets
+        """
+        base_list_start = [("load_image", {}),
+                           ("add_channel", {}),
+                           ("normalizeintensity", {"nonzero": True}),
+                           ]
+        base_list_end = [("bounding_boxes_generator", {"segmentation_mode": self.segmentation_mode, "n_classes": self.n_classes}),
+                         ("to_tensor", {}),
+                         ]
+
+        list_of_transforms = list()
+
+        # First add the images, reorient them and make sure the channel is first
+        for t_name, kwargs in base_list_start:
+            if self.verbose: list_of_transforms.append(Lambdad(keys=["img"], func=Printer(t_name)))
+            list_of_transforms.append(get_transform_from_name(t_name, **kwargs))
+            if self.show: list_of_transforms.append(ShowImage(keys=["img", "seg"], dim=2, grid=True, msg=t_name))
+
+        # Perform of augmentations if specified and if training mode
+        if self.augmentations is not None and mode == "train":
+            for transform in self.augmentations:
+                if type(transform) != tuple:
+                    transform = (transform, {})
+                t_name, kwargs = transform
+
+                if self.verbose: list_of_transforms.append(Lambdad(keys=["img"], func=Printer(t_name)))
+                list_of_transforms.append(get_transform_from_name(t_name, **kwargs))
+                if self.show: list_of_transforms.append(ShowImage(keys=["img", "seg"], dim=2, grid=True, msg=t_name))
+
+        # Add the final transformations
+        for t_name, kwargs in base_list_end:
+            if self.verbose: list_of_transforms.append(Lambdad(keys=["seg"], func=Printer(t_name)))
+            list_of_transforms.append(get_transform_from_name(t_name, **kwargs))
+
+        return list_of_transforms
 
     def setup(self, stage=None):
         if self.subject is not None:
@@ -426,8 +439,7 @@ class ExampleDataset(pl.LightningDataModule):
             # print(self.trainsubs, self.testsubs)
 
         else:
-            spl = train_test_split(self.subjects_list, train_size=0.8, test_size=0.2,
-                                   random_state=self.random_state)
+            spl = train_test_split(self.subjects_list, train_size=0.8, test_size=0.2, random_state=self.random_state)
             self.trainsubs, self.testsubs = spl
 
         DS = CacheDataset if self.cache else Dataset

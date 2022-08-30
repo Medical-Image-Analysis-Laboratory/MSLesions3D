@@ -63,7 +63,8 @@ def predict_all(dataset, model, predict_subset="test", min_score=0.5, max_overla
     return det_locs, det_labels, det_scores
 
 
-def compute_subjects_mAP(model, loader = None, dataset=None, subject_id = None, path_to_dir=r"./predictions"):
+def compute_subjects_mAP(model, loader = None, dataset=None, subject_id = None, path_to_dir=r"./predictions",
+                         min_iou=0.5):
     # Expects Loader to have batch size = 1
 
     assert loader or (subject_id and dataset)
@@ -72,10 +73,6 @@ def compute_subjects_mAP(model, loader = None, dataset=None, subject_id = None, 
         images, [gt_boxes, gt_labels] = subject["img"], subject['seg']
 
         images = images.to(device)
-
-        # if multiple:
-        #     gt_boxes = gt_boxes[0]
-        #     gt_labels = gt_labels[0]
 
         gt_boxes = [b.to(device) for b in gt_boxes]
         gt_labels = [l.to(device) for l in gt_labels]
@@ -92,7 +89,7 @@ def compute_subjects_mAP(model, loader = None, dataset=None, subject_id = None, 
             compute_mAP = [1 if len(predicted_locs_img) > 500 else 0 for predicted_locs_img in predicted_locs]
             compute_mAP = sum(compute_mAP)
             if compute_mAP != 0:
-                APs, mAP, _ = calculate_mAP(det_boxes, det_labels, det_scores, gt_boxes, gt_labels, gt_difficulties)
+                APs, mAP, _ = calculate_mAP(det_boxes, det_labels, det_scores, gt_boxes, gt_labels, gt_difficulties, min_overlap=min_iou)
                 mAP = torch.FloatTensor([mAP])
             else:
                 mAP = torch.FloatTensor([-10])
@@ -121,7 +118,7 @@ def compute_subjects_mAP(model, loader = None, dataset=None, subject_id = None, 
 
 
 
-def save_predictions_example(loader, det_locs, det_labels, det_scores, path_to_dir=r"./predictions"):
+def save_predictions_example(loader, det_locs, det_labels, det_scores, path_to_dir=r"./predictions", save_images=True):
     print("Saving predictions ...")
 
     if not pexists(path_to_dir):
@@ -184,8 +181,9 @@ def save_predictions_example(loader, det_locs, det_labels, det_scores, path_to_d
 
                 all_infos[j + 1] = (det_box_frac, det_box, det_label, float(det_score))
 
-            nib_img = nib.Nifti1Image(pred_seg_subj, affine.squeeze())
-            nib.save(nib_img, pjoin(path_to_dir, f"sub-{subj}_preds.nii.gz"))
+            if save_images:
+                nib_img = nib.Nifti1Image(pred_seg_subj, affine.squeeze())
+                nib.save(nib_img, pjoin(path_to_dir, f"sub-{subj}_preds.nii.gz"))
 
             infos = pd.DataFrame(scores_map, columns=["label_id", "score"])
             infos.to_csv(pjoin(path_to_dir, f"sub-{subj}_preds.csv"))
@@ -194,28 +192,31 @@ def save_predictions_example(loader, det_locs, det_labels, det_scores, path_to_d
                 json.dump(all_infos, json_file)
 
 
-def predict_example():
+def predict_example(path_to_dir, percentage=1., predict_subset="train", save_images=True):
     pl.seed_everything(970205)
 
     n_classes = 1
 
-    path = r"C:\Users\Cristina\Desktop\MSLesions3D\tensorboard\example\full_dataset_400_100\version_9\checkpoints\epoch=145-step=7300.ckpt"
+    path = r"C:\Users\Cristina\Desktop\MSLesions3D\tensorboard\example\full_dataset_400_100\version_22\checkpoints\epoch=172-step=8650.ckpt"
 
-    model = LSSD3D.load_from_checkpoint(path, min_score=0.5).to(device)
-
-    dataset = ExampleDataset(n_classes=n_classes, percentage=0.025, cache=False, num_workers=8, objects="multiple",
+    dataset = ExampleDataset(n_classes=n_classes, percentage=percentage, cache=False, num_workers=12, objects="multiple",
                              batch_size=1)
-
-    path_to_dir = r"C:\Users\Cristina\Desktop\MSLesions3D\data\example\\multiple_objects\one_class\predictions"
     dataset.setup(stage="predict")
-    loader = dataset.predict_train_dataloader()
+    if predict_subset == "train":
+        loader = dataset.predict_train_dataloader()
+    else:
+        loader = dataset.predict_test_dataloader()
 
-    for data in dataset.predict_train_dataset.data: print(data["subject"])
+    model = LSSD3D.load_from_checkpoint(path, min_score=0.1).to(device)
+
+    if not pexists(path_to_dir): os.makedirs(path_to_dir)
+
+    # for data in dataset.predict_train_dataset.data: print(data["subject"])
 
     predictor = pl.Trainer(gpus=1, enable_progress_bar=True)
     predictions_all_batches = predictor.predict(model, dataloaders=loader)
 
-    model = model.to(device)
+    model.to(device)
 
     det_locs = list()
     det_labels = list()
@@ -226,11 +227,10 @@ def predict_example():
         det_scores.append(scores[0])
 
     if path_to_dir is not None:
-        save_predictions_example(loader, det_locs, det_labels, det_scores, path_to_dir)
+        save_predictions_example(loader, det_locs, det_labels, det_scores, path_to_dir, save_images)
 
-    print(compute_subjects_mAP(model, loader=loader, dataset=None, subject_id=None, path_to_dir=path_to_dir))
-
-    pass
+    print("AP for IoU = 0.5\n", compute_subjects_mAP(model, loader=loader, dataset=None, subject_id=None, path_to_dir=path_to_dir, min_iou=0.5))
+    print("AP for IoU = 0.1\n", compute_subjects_mAP(model, loader=loader, dataset=None, subject_id=None, path_to_dir=path_to_dir, min_iou=0.1))
 
 
 def save_predictions(dataset, loader, det_locs, det_labels, det_scores, path_to_dir):
@@ -260,32 +260,37 @@ def save_predictions(dataset, loader, det_locs, det_labels, det_scores, path_to_
 
 if __name__ == "__main__":
     pass
-    pl.seed_everything(970205)
+    path_to_dir = r"C:\Users\Cristina\Desktop\MSLesions3D\data\example\\multiple_objects\one_class\predictions\version_22"
+    predict_example(path_to_dir, percentage=1., predict_subset="train", save_images=False)
 
-    path = r""
 
-    model = LSSD3D.load_from_checkpoint(path).to(device)
-
-    dataset = LesionsDataModule(percentage=0.1,batch_size=1)
-    dataset.setup(stage="predict")
-
-    loader = dataset.predict_train_dataloader()
-    for data in dataset.predict_train_dataset.data: print(data["subject"])
-
-    predictor = pl.Trainer(gpus=1, enable_progress_bar=True)
-    predictions_all_batches = predictor.predict(model, dataloaders=loader)
-
-    model = model.to(device)
-
-    det_locs = list()
-    det_labels = list()
-    det_scores = list()
-    for locs, labels, scores in predictions_all_batches:
-        det_locs.append(locs[0])
-        det_labels.append(labels[0])
-        det_scores.append(scores[0])
-
-    path_to_dir = r"C:\Users\Cristina\Desktop\MSLesions3D\data\lesions\predictions"
-    print(compute_subjects_mAP(model, loader=loader, dataset=None, subject_id=None, path_to_dir=path_to_dir))
+    # LESIONS !
+    # pl.seed_everything(970205)
+    #
+    # path = r""
+    #
+    # model = LSSD3D.load_from_checkpoint(path).to(device)
+    #
+    # dataset = LesionsDataModule(percentage=0.1,batch_size=1)
+    # dataset.setup(stage="predict")
+    #
+    # loader = dataset.predict_train_dataloader()
+    # for data in dataset.predict_train_dataset.data: print(data["subject"])
+    #
+    # predictor = pl.Trainer(gpus=1, enable_progress_bar=True)
+    # predictions_all_batches = predictor.predict(model, dataloaders=loader)
+    #
+    # model = model.to(device)
+    #
+    # det_locs = list()
+    # det_labels = list()
+    # det_scores = list()
+    # for locs, labels, scores in predictions_all_batches:
+    #     det_locs.append(locs[0])
+    #     det_labels.append(labels[0])
+    #     det_scores.append(scores[0])
+    #
+    # path_to_dir = r"C:\Users\Cristina\Desktop\MSLesions3D\data\lesions\predictions"
+    # print(compute_subjects_mAP(model, loader=loader, dataset=None, subject_id=None, path_to_dir=path_to_dir))
 
 
