@@ -364,7 +364,7 @@ class ExampleDataset(pl.LightningDataModule):
 
         assert n_classes == 1 or n_classes == 2
 
-        self.data_dir = r"C:\Users\Cristina\Desktop\MSLesions3D\data\example"
+        self.data_dir = r"..\data"
         self.data_dir = self.data_dir + r"\multiple_objects" if objects == "multiple" else self.data_dir
 
         self.data_dir = pjoin(self.data_dir, "one_class") if n_classes == 1 else \

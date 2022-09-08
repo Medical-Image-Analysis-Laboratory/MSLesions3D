@@ -8,37 +8,62 @@ Inspired by https://github.com/MIC-DKFZ/nnDetection/blob/main/scripts/generate_e
 
 import os
 from os.path import join as pjoin
+from os.path import exists as pexists
 import random
 from multiprocessing import Pool
 from itertools import repeat
 import nibabel as nib
-
+from pathlib import Path
+import argparse
 import numpy as np
 
+parser = argparse.ArgumentParser()
+parser.add_argument('--dim', type=int, required=False, default=3, help="number of dimensions for the images")
+parser.add_argument('--n_classes', type=int, required=False, default=1, help="number of different classes to generate")
+parser.add_argument('--image_size', type=int, nargs='+', default=[250,300,300],
+                    help="image size (length must match the number of dimensions)")
+parser.add_argument('--object_size', type=int, nargs='+', default=[10,32], help="range for object size [min, max]")
+parser.add_argument('--num_objects', type=int, nargs='+', default=[2, 5], help="range of number of objects to add on the image")
+parser.add_argument('--object_width', type=int, required=False, default=4, help="width if # classes is 2")
+parser.add_argument('--num_processes', type=int, required=False, default=8, help="number of processes")
+parser.add_argument('--num_images', type=int, required=False, default=500, help="number of images to generate")
+parser.add_argument('--noise', type=int, default=1, help="whether to add noise to the image or not")
+parser.add_argument('--output_dir', type=str, required=True,
+                    default=rf"/home/wynen/MSLesions3D/data/artificial_dataset/", help="output directory")
 
-dim = 3
-image_size = [250, 300, 300]
-object_size = [16, 32]
-object_width = 4
-n_classes = 1
-num_processes = 8
-num_images = 500
+
+args = parser.parse_args()
+print(args.object_size)
+dim = args.dim # 3
+image_size = list(args.image_size) # [250, 300, 300]
+object_size = sorted(list(args.object_size)) # [10, 32]
+object_width = args.object_width # 4
+n_classes = args.n_classes # 1
+num_processes = args.num_processes # 8
+num_images = args.num_images # 500
+add_noise = bool(args.noise)
+num_objects = args.num_objects
 
 DIR = "one_class" if n_classes == 1 else "double_class"
-DIR = "multiple_objects\one_class"
+DIR = "multiple_objects/one_class"
 
-image_dir = rf"C:\Users\Cristina\Desktop\MSLesions3D\data\example\{DIR}\images"
-seg_dir = rf"C:\Users\Cristina\Desktop\MSLesions3D\data\example\{DIR}\labels"
+image_dir = pjoin(args.output_dir, DIR, "images") # rf"/home/wynen/MSLesions3D/data/artificial_dataset/{DIR}/images"
+seg_dir = pjoin(args.output_dir, DIR, "seg") # rf"/home/wynen/MSLesions3D/data/artificial_dataset/{DIR}/labels"
 
-def generate_image(image_dir, label_dir, idx, n_classes, noise=True):
+if not pexists(image_dir):
+    os.makedirs(image_dir)
+if not pexists(seg_dir):
+    os.makedirs(seg_dir)
+
+def generate_image(image_dir, label_dir, idx, n_classes, noise=add_noise):
     print(f"Generating image and segmentation for case {idx}...")
     random.seed(idx)
     np.random.seed(idx)
     
-    data = np.random.rand(*image_size) if noise else np.zeros_like(data)
+    data = np.random.rand(*image_size) if noise else np.zeros(image_size)
     mask = np.zeros_like(data)
 
-    n_objects = np.random.randint(1,5)
+    n_objects = np.random.randint(*num_objects)
 
     for _ in range(n_objects+1):
 
@@ -51,7 +76,7 @@ def generate_image(image_dir, label_dir, idx, n_classes, noise=True):
 
         if selected_class == 0:
             slicing = tuple([slice(tp, tp + selected_size) for tp in top_left])
-            data[slicing] = data[slicing] + 0.4
+            data[slicing] = data[slicing] + 0.4 if noise else np.random.uniform(0.5, 1)
             data = data.clip(0, 1)
             mask[slicing] = 1
         elif selected_class == 1:
@@ -66,7 +91,7 @@ def generate_image(image_dir, label_dir, idx, n_classes, noise=True):
             object_mask[slicing] = 1
             object_mask[inner_slicing] = 0
 
-            data[object_mask] = data[object_mask] + 0.4
+            data[object_mask] = data[object_mask] + 0.4 if noise else np.random.uniform(0.5, 1)
             data = data.clip(0, 1)
             mask[object_mask] = 2
         else:
@@ -92,5 +117,7 @@ def main():
         )
 
 if __name__ == "__main__":
+    # generate_image(image_dir, seg_dir, num_images, n_classes)
     main()
+
 
