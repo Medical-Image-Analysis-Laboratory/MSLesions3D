@@ -355,17 +355,18 @@ def stats_foreground(ds, show=False):
     return all_shapes, all_pixdims
 
 
+
 class ExampleDataset(pl.LightningDataModule):
     def __init__(self, n_classes=1, objects="multiple", percentage=1., augmentations=None, batch_size=8,
-                 num_workers=int(os.cpu_count() / 2), verbose=False, show=False,
-                 random_state=970205, cache=False, subject=None):
+                 num_workers=int(os.cpu_count() / 2), verbose=False, show=False, random_state=970205, cache=False,
+                 subject=None, data_dir="/home/wynen/MSLesions3D/data/artificial_dataset"):
 
         super().__init__()
 
         assert n_classes == 1 or n_classes == 2
 
-        self.data_dir = r"..\data"
-        self.data_dir = self.data_dir + r"\multiple_objects" if objects == "multiple" else self.data_dir
+        self.data_dir = data_dir
+        self.data_dir = self.data_dir + r"/multiple_objects" if objects == "multiple" else self.data_dir
 
         self.data_dir = pjoin(self.data_dir, "one_class") if n_classes == 1 else \
             pjoin(self.data_dir, "double_class")
@@ -482,19 +483,5 @@ class ExampleDataset(pl.LightningDataModule):
 if __name__ == '__main__':
     pass
     import matplotlib.pyplot as plt
+    ds = ExampleDataset()
 
-    data_dir = r"C:\Users\Cristina\Desktop\2DFA\data\raw"
-    centers = ("CHUV_RIM_OK", "BASEL_INSIDER_OK")
-
-    # dataset = LesionsDataModule(data_dir=data_dir, centers=centers, batch_size=1, percentage=1, verbose=True,
-    #                             num_workers=0, cache=False)
-    dataset = LesionsDataModule(data_dir=data_dir, subject=('CHUV_RIM_OK', '010'), batch_size=1, percentage=1, verbose=True,
-                                num_workers=0, cache=False)
-    dataset.setup(stage="all")
-    loader = dataset.all_dataloader()
-    for i, batch in enumerate(loader):
-        img = batch["img"][0][0].cpu()
-        plt.imshow(img[125], cmap="gray")
-        plt.title(f"Subject {batch['subject']}")
-        plt.show()
-        break

@@ -43,21 +43,63 @@ config = [32,
           [1024, 2, (1, 1, 1)],
           ]
 
-FEATURE_MAP_DIMENSIONS = {0: (250, 300, 300),
-                          1: (125, 75, 75),
-                          2: (63, 38, 38),
-                          3: (63, 38, 38),
-                          4: (32, 19, 19),
-                          5: (32, 19, 19),
-                          6: (16, 10, 10),
-                          7: (16, 10, 10),
-                          8: (16, 10, 10),
-                          9: (16, 10, 10),
-                          10: (16, 10, 10),
-                          11: (16, 10, 10),
-                          12: (16, 10, 10),
-                          13: (16, 10, 10),
-                          }
+# def get_feature_map_dimensions(input_size):
+#     FEATURE_MAP_DIMENSIONS = {}
+#
+#     cube = input_size[0] == input_size[1] == input_size[2]
+#     first_stride = (1,2,2)first_stride = (1,2,2) if not cube else (2,2,2) if not cube else (2,2,2)
+#
+#     cfg = config[1:]
+#     # channel, n_repeat, stride
+#     i = 0
+#
+#     last_feature_map_dim = input_size
+#     FEATURE_MAP_DIMENSIONS[i+1] = (last_feature_map_dim[0] // first_stride[0],
+#                                      last_feature_map_dim[1] // first_stride[1],
+#                                      last_feature_map_dim[2] // first_stride[2],)
+#     for _, (c, n, s) in enumerate(cfg):
+#         for j in range(n):
+#             if j == 0:
+#                 FEATURE_MAP_DIMENSIONS[i+1] = (last_feature_map_dim[0] // s[0],) * 3
+#                 last_feature_map_dim = FEATURE_MAP_DIMENSIONS[i+1]
+#             else:
+#                 FEATURE_MAP_DIMENSIONS[i+1] = last_feature_map_dim
+#
+#             i += 1
+#     return FEATURE_MAP_DIMENSIONS
+
+
+
+
+
+
+FEATURE_MAP_DIMENSIONS_64 = {0: (32, 32, 32),
+                              1: (16, 16, 16),
+                              2: (8, 8, 8),
+                              3: (8, 8, 8),
+                              4: (4, 4, 4),
+                              5: (4, 4, 4),
+                              6: (2, 2, 2),
+                              7: (2, 2, 2),
+}
+
+FEATURE_MAP_DIMENSIONS_250 = {0: (250, 300, 300), # FALSE????
+                              1: (125, 75, 75),
+                              2: (63, 38, 38),
+                              3: (63, 38, 38),
+                              4: (32, 19, 19),
+                              5: (32, 19, 19),
+                              6: (16, 10, 10),
+                              7: (16, 10, 10),
+                              8: (16, 10, 10),
+                              9: (16, 10, 10),
+                              10: (16, 10, 10),
+                              11: (16, 10, 10),
+                              12: (16, 10, 10),
+                              13: (16, 10, 10),
+                              }
+
+
 
 features_n_channels = [[cf[0]] * cf[1] for cf in config[1:]]
 features_n_channels = [config[0]] + [item for sublist in features_n_channels for item in sublist]
@@ -102,6 +144,7 @@ class MobileNetBase(nn.Module):
         out_features = {}
         for i, feat in enumerate(self.features):
             out = feat(out)
+            # print(f"Block {i} output  --  feature shape: {out.shape}")
             if i in out_n_features:
                 out_features[i] = out
                 if out.isnan().sum() > 0:
@@ -236,7 +279,7 @@ class LSSD3D(pl.LightningModule):
     def __init__(self,
                  n_classes,
                  input_channels=3,
-                 cube=False, #whether the input image is 300x300x300 or 250x300x300
+                 input_size=(250,300,300),
                  threshold=0.5,
                  alpha=1.,
                  lr=1.3e-5,
@@ -255,7 +298,11 @@ class LSSD3D(pl.LightningModule):
         super(LSSD3D, self).__init__()
         print("Init LSSD3D")
 
-        self.save_hyperparameters(ignore=["timesteps"])
+        # self.save_hyperparameters(ignore=["timesteps"])
+        self.save_hyperparameters()
+
+        cube = input_size[0] == input_size[1] == input_size[2]
+        self.input_size = input_size
 
         self.n_classes = n_classes
         self.base = MobileNetBase(in_channels=input_channels, width_mult=width_mult, cube=cube)
@@ -310,7 +357,8 @@ class LSSD3D(pl.LightningModule):
         :return: prior boxes in center-size coordinates, a tensor of dimensions (xxx, 6)
         """
         features = list(ASPECT_RATIOS.keys())
-        fmap_dims = {feat: FEATURE_MAP_DIMENSIONS[feat] for feat in features}
+        fmd = FEATURE_MAP_DIMENSIONS_250 if self.input_size[0] == 250 else FEATURE_MAP_DIMENSIONS_64
+        fmap_dims = {feat: fmd[feat] for feat in features}
         obj_scales = {feat: SCALES[feat] for feat in features}
         aspect_ratios = {feat: ASPECT_RATIOS[feat] for feat in features}
 
@@ -637,7 +685,7 @@ class LSSD3D(pl.LightningModule):
 
         # Save the model using wandb if wandb is activated
         if self.use_wandb:
-            dummy_input = torch.rand((1, self.input_channels, 250, 300, 300), device=self.device)
+            dummy_input = torch.rand((1, self.input_channels, *self.input_size), device=self.device)
             model_filename = "model_final.onnx"
             self.to_onnx(model_filename, dummy_input, export_params=True)
             wandb.save(model_filename)
@@ -909,10 +957,7 @@ class MultiBoxLoss(nn.Module):
 
 if __name__ == '__main__':
     pass
-    model = LSSD3D(n_classes=2,
-                   input_channels=1).to(device)
-    #
-    # batch_size = 8
+    model = LSSD3D(n_classes=2, input_channels=1).to(device)
     #
     # x = torch.rand(3, 1, 250, 300, 300).to(device)
     # locs, scores = model(x)
@@ -922,5 +967,17 @@ if __name__ == '__main__':
     # criterion = MultiBoxLoss(model.priors_cxcycz)
     #
     # c, l = criterion(locs, scores, gt_boxes, gt_labels)
-    base = MobileNetBase(width_mult = 0.2, cube=True).cpu()
+    # base = MobileNetBase(width_mult = 0.2, cube=True).cpu()
+    # x = torch.rand(3, 1, 300, 300, 300).to(device)
+
+    base = MobileNetBase(width_mult = 1., cube=True).to(device)
+    x = torch.rand(3, 1, 64, 64, 64).to(device)
+    base(x)
+    print()
+    base = MobileNetBase(width_mult = 1., cube=False).to(device)
+    x = torch.rand(3, 1, 250, 300, 300).to(device)
+    base(x)
+    print()
+    base = MobileNetBase(width_mult = 1., cube=True).to(device)
     x = torch.rand(3, 1, 300, 300, 300).to(device)
+    base(x)

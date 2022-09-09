@@ -30,10 +30,9 @@ parser.add_argument('--num_images', type=int, required=False, default=500, help=
 parser.add_argument('--noise', type=int, default=1, help="whether to add noise to the image or not")
 parser.add_argument('--output_dir', type=str, required=True,
                     default=rf"/home/wynen/MSLesions3D/data/artificial_dataset/", help="output directory")
-
+parser.add_argument('--random_seed', type=int, default=0, help="random seed")
 
 args = parser.parse_args()
-print(args.object_size)
 dim = args.dim # 3
 image_size = list(args.image_size) # [250, 300, 300]
 object_size = sorted(list(args.object_size)) # [10, 32]
@@ -43,12 +42,15 @@ num_processes = args.num_processes # 8
 num_images = args.num_images # 500
 add_noise = bool(args.noise)
 num_objects = args.num_objects
+random_seed = args.random_seed
+print(f"Random seed set at {random_seed}")
+
 
 DIR = "one_class" if n_classes == 1 else "double_class"
 DIR = "multiple_objects/one_class"
 
 image_dir = pjoin(args.output_dir, DIR, "images") # rf"/home/wynen/MSLesions3D/data/artificial_dataset/{DIR}/images"
-seg_dir = pjoin(args.output_dir, DIR, "seg") # rf"/home/wynen/MSLesions3D/data/artificial_dataset/{DIR}/labels"
+seg_dir = pjoin(args.output_dir, DIR, "labels") # rf"/home/wynen/MSLesions3D/data/artificial_dataset/{DIR}/labels"
 
 if not pexists(image_dir):
     os.makedirs(image_dir)
@@ -57,8 +59,8 @@ if not pexists(seg_dir):
 
 def generate_image(image_dir, label_dir, idx, n_classes, noise=add_noise):
     print(f"Generating image and segmentation for case {idx}...")
-    random.seed(idx)
-    np.random.seed(idx)
+    random.seed(random_seed + idx)
+    np.random.seed(random_seed + idx)
     
     data = np.random.rand(*image_size) if noise else np.zeros(image_size)
     mask = np.zeros_like(data)
