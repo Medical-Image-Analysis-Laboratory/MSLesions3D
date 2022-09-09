@@ -52,7 +52,7 @@ def evaluate(path_to_preds ,predict_subset="train", n_classes=1, percentage=1.,c
 
     """
     dataset = ExampleDataset(n_classes=n_classes, percentage=percentage, cache=False)
-    dataset.batch_size = 32
+    dataset.batch_size = 34
     dataset.setup(stage="predict")
     loader = dataset.predict_train_dataloader() if predict_subset == "train" \
         else dataset.predict_test_dataloader()
