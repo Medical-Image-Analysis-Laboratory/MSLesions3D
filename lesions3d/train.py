@@ -9,13 +9,15 @@ from datasets import *
 from ssd3d import *
 from pytorch_lightning.loggers import TensorBoardLogger, WandbLogger
 import pytorch_lightning as pl
-# import wandb
-# wandb.login()
+import wandb
+wandb.login()
 import pickle
 import time
 from datetime import datetime
 import argparse
 import json
+from os.path import join as pjoin
+from os.path import exists as pexists
 
 parser = argparse.ArgumentParser()
 parser.add_argument('-d', '--dataset_path', type=str, help="path to dataset used for training and validation",
@@ -27,15 +29,17 @@ parser.add_argument('-b', '--batch_size', type=int, default=8, help="training ba
 parser.add_argument('-lr', '--learning_rate', type=float, default=0.0005, help="training learning rate")
 parser.add_argument('-sr', '--scheduler', type=str, default="CosineAnnealingLR", help="learning rate scheduler")
 parser.add_argument('-l', '--layers', type=int, nargs='+', default=[3, 5, 7], help="layers to include in the network")
-parser.add_argument('-sc', '--scales', type=json.loads, default="{\"1\": 0.05, \"3\": 0.075, \"5\": 0.1, \"7\": 0.125}",
+parser.add_argument('-sc', '--scales', type=json.loads, default="{\"1\": 0.05, \"3\": 0.1, \"5\": 0.15, \"7\": 0.2}",
                     help="layers to include in the network")
 parser.add_argument('--alpha', type=int, default=[3, 5, 7],
                     help="alpha parameter for the multibox loss (= confidence loss + alpha * localization loss)")
 parser.add_argument('-a', '--augmentations', type=bool, default=False)
-parser.add_argument('-ld', '--logdir', type=str, default=r'/home/wynen/MSLesions3D/artificial_dataset')
+parser.add_argument('-ld', '--logdir', type=str, default=r'/home/wynen/MSLesions3D/logs/artificial_dataset')
 parser.add_argument('-c', '--cache', type=bool, default=False, help="whether to cache the dataset or not")
 parser.add_argument('-nw', '--num_workers', type=int, default=8, help="number of workers for the dataset")
 parser.add_argument('-wm', '--width_mult', type=float, default=0.4, help="width multiplicator (MobileNet)")
+parser.add_argument('-en', '--experiment_name', type=str, default="one_subject_64", help="experiment name for tensorboard logdir")
+parser.add_argument('-wb', '--use_wandb', type=bool, default=True, help="whether to use weights and biases as logging tool")
 
 args = parser.parse_args()
 ARS = {l: [1.] for l in args.layers}
@@ -110,33 +114,28 @@ def example():
     
     """
 
-    model = LSSD3D(n_classes=args.n_classes + 1, input_channels=1, lr=args.learning_rate, width_mult=args.width_mult,
-                   scheduler=args.scheduler, batch_size=args.batch_size, comments=comments,
-                   compute_metric_every_n_epochs=5, use_wandb=False, ASPECT_RATIOS=ASPECT_RATIOS, SCALES=SCALES)
-    model.init()
-
-    # dataset = ExampleDataset(n_classes = n_classes, subject = "0420", percentage = -1, cache=True, num_workers=1, objects="multiple", batch_size=batch_size)
     dataset = ExampleDataset(n_classes=args.n_classes, subject = args.subject, percentage=args.percentage, cache=args.cache,
                              num_workers=args.num_workers, objects="multiple", batch_size=args.batch_size,
                              augmentations=augmentations)
     dataset.setup(stage="fit")
+    input_size = tuple(dataset.train_dataset[0]["img"].shape)[1:]
 
-    # # pickle_dataset(dataset, dataset_file)
-    # for data in dataset.train_dataset.data: print(data["subject"])
+    model = LSSD3D(n_classes=args.n_classes + 1, input_channels=1, lr=args.learning_rate, width_mult=args.width_mult,
+                   scheduler=args.scheduler, batch_size=args.batch_size, comments=comments, input_size = input_size,
+                   compute_metric_every_n_epochs=5, use_wandb=args.use_wandb, ASPECT_RATIOS=ASPECT_RATIOS, SCALES=SCALES)
+    model.init()
 
-    # import time
-    # print("Loading dataset...")
-    # s = time.time()
-    # dataset = pickle.load(open(dataset_file, "rb"))
-    # print(f"Dataset finished loading after {int(time.time() - s)}s")
 
     train_loader = dataset.train_dataloader()
     test_loader = dataset.test_dataloader()
 
     logdir = args.logdir
-    logger = TensorBoardLogger(logdir, name="one_subject_64", default_hp_metric=False)
-    # wandb_logger = WandbLogger(project="WhiteBoxes")
-    trainer = pl.Trainer(gpus=1, max_epochs=100, logger=logger, enable_progress_bar=True, log_every_n_steps=1)
+    if not pexists(pjoin(logdir, args.experiment_name)):
+        os.makedirs(pjoin(logdir, args.experiment_name))
+    tb_logger = TensorBoardLogger(logdir, name=args.experiment_name, default_hp_metric=False)
+    wandb_logger = WandbLogger(project="WhiteBoxes64")
+    logger = wandb_logger if args.use_wandb else tb_logger
+    trainer = pl.Trainer(accelerator="gpu", devices=1, max_epochs=100, logger=logger, enable_progress_bar=True, log_every_n_steps=1)
     # trainer = pl.Trainer(gpus=1, max_epochs=600, fast_dev_run=False, logger=logger,  enable_progress_bar=True, log_every_n_steps=1,
     #                      resume_from_checkpoint = r"C:\Users\Cristina\Desktop\MSLesions3D\tensorboard\example\full_dataset_400_100\version_21\checkpoints\epoch=63-step=3200.ckpt")
 
@@ -187,7 +186,7 @@ def train_lesions():
 
     logdir = r"C:\Users\Cristina\Desktop\MSLesions3D\tensorboard\lesions"
     logger = TensorBoardLogger(logdir, name="zebardi", default_hp_metric=False)
-    trainer = pl.Trainer(gpus=1, max_epochs=750, logger=logger, enable_progress_bar=True, log_every_n_steps=1)
+    trainer = pl.Trainer(accelerator="gpu", devices=1, max_epochs=750, logger=logger, enable_progress_bar=True, log_every_n_steps=1)
 
     trainer.fit(model=model, train_dataloaders=train_loader, val_dataloaders=test_loader)
 

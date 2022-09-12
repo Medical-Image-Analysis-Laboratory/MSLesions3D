@@ -6,6 +6,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import pytorch_lightning as pl
+import warnings
+warnings.filterwarnings(action="ignore", message=".*TracerWarning.*")
 
 
 def conv_bn(inp, oup, stride):
@@ -28,7 +30,7 @@ class Block(nn.Module):
     def forward(self, x):
         out = F.relu(self.bn1(self.conv1(x)))
         out = F.relu(self.bn2(self.conv2(out)))
-        if out.isnan().sum()>0:
+        if out.isnan().sum() > 0:
             breakpoint()
             raise Exception("NaN Loss in MobileNet Block")
         return out

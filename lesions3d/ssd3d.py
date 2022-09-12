@@ -558,23 +558,18 @@ class LSSD3D(pl.LightningModule):
                     # Calculate mAP at min_IoU of 0.5
                     metrics_50 = calculate_mAP(det_boxes, det_labels, det_scores, gt_boxes, gt_labels, gt_difficulties, min_overlap=0.5, return_detail=True)
                 else:
-                    # metrics_10 = None
-                    # metrics_50 = None
-                    # mAP_10 = torch.FloatTensor([-10])
-                    # mAP_50 = torch.FloatTensor([-10])
                     raise NotImplementedError
 
-            # logs["train_mAP_10"] = mAP_10
-            # logs["train_mAP_50"] = mAP_50
             logs["metrics_10"] = metrics_10
             logs["metrics_50"] = metrics_50
 
-        # print(f"Logging (train step {self.global_step})", round(loss.item(),3), round(conf_loss.item(),3), round(loc_loss.item(),3))#, "mAP = ", mAP + self.current_epoch)
-
         # Log the different losses
-        self.logger.experiment.add_scalar('total_loss/training', loss.item(), self.global_step)
-        self.logger.experiment.add_scalar('confidence_loss/training', conf_loss.item(), self.global_step)
-        self.logger.experiment.add_scalar('localization_loss/training', loc_loss.item(), self.global_step)
+        log_fn = self.log if self.use_wandb else self.logger.experiment.add_scalar
+        kwargs = [] if self.use_wandb else [self.global_step]
+        self.log('total_loss/training', loss.item(), *kwargs)
+        self.log('confidence_loss/training', conf_loss.item(), *kwargs)
+        self.log('localization_loss/training', loc_loss.item(), *kwargs)
+
 
         sch = self.lr_schedulers()
         if sch is not None:
@@ -630,14 +625,8 @@ class LSSD3D(pl.LightningModule):
                                                       gt_difficulties, min_overlap=0.5, return_detail=True)
                     metrics_50["mAP"] = torch.FloatTensor([metrics_50["mAP"]])
                 else:
-                    # mAP_10 = torch.FloatTensor([-10])
-                    # mAP_50 = torch.FloatTensor([-10])
-                    # metrics_10 = None
-                    # metrics_50 = None
                     raise NotImplementedError
 
-            # logs["val_mAP_10"] = mAP_10
-            # logs["val_mAP_50"] = mAP_50
             logs["metrics_10"] = metrics_10
             logs["metrics_50"] = metrics_50
 
@@ -655,9 +644,11 @@ class LSSD3D(pl.LightningModule):
         # print(f"Logging (validation epoch {self.current_epoch})")#, round(avg_loss.item(),3), round(avg_conf_loss.item(),3), round(avg_loc_loss.item(),3))
 
         # Log the different losses
-        self.logger.experiment.add_scalar('total_loss/validation', avg_loss, self.global_step)
-        self.logger.experiment.add_scalar('confidence_loss/validation', avg_conf_loss, self.global_step)
-        self.logger.experiment.add_scalar('localization_loss/validation', avg_loc_loss, self.global_step)
+        log_fn = self.log if self.use_wandb else self.logger.experiment.add_scalar
+        kwargs = [] if self.use_wandb else [self.global_step]
+        log_fn('total_loss/validation', avg_loss, *kwargs)
+        log_fn('confidence_loss/validation', avg_conf_loss, *kwargs)
+        log_fn('localization_loss/validation', avg_loc_loss, *kwargs)
 
         # Log the mAP every n epochs
         if self.current_epoch % self.compute_metric_every_n_epochs == 0:
@@ -673,15 +664,19 @@ class LSSD3D(pl.LightningModule):
             avg_recall_50 = torch.stack([torch.FloatTensor([x["log"]["metrics_50"]["recall"]]) for x in outputs]).mean() # change this if n_classes > 2
             avg_f1_score_50 = torch.stack([torch.FloatTensor([x["log"]["metrics_50"]["f1_score"]]) for x in outputs]).mean() # change this if n_classes > 2
 
-            self.logger.experiment.add_scalar('mAP/validation_IoU_0.1',         avg_mAP_10, self.global_step)
-            self.logger.experiment.add_scalar('precision/validation_IoU_0.1',   avg_precision_10, self.global_step)
-            self.logger.experiment.add_scalar('recall/validation_IoU_0.1',      avg_recall_10, self.global_step)
-            self.logger.experiment.add_scalar('f1_score/validation_IoU_0.1',    avg_f1_score_10, self.global_step)
+            # Logging
+            log_fn = self.log if self.use_wandb else self.logger.experiment.add_scalar
 
-            self.logger.experiment.add_scalar('mAP/validation_IoU_0.5',         avg_mAP_50, self.global_step)
-            self.logger.experiment.add_scalar('precision/validation_IoU_0.5',   avg_precision_50, self.global_step)
-            self.logger.experiment.add_scalar('recall/validation_IoU_0.5',      avg_recall_50, self.global_step)
-            self.logger.experiment.add_scalar('f1_score/validation_IoU_0.5',    avg_f1_score_50, self.global_step)
+            log_fn('mAP/validation_IoU_0.1',         avg_mAP_10,        *kwargs)
+            log_fn('precision/validation_IoU_0.1',   avg_precision_10,  *kwargs)
+            log_fn('recall/validation_IoU_0.1',      avg_recall_10,     *kwargs)
+            log_fn('f1_score/validation_IoU_0.1',    avg_f1_score_10,   *kwargs)
+
+            log_fn('mAP/validation_IoU_0.5',         avg_mAP_50,        *kwargs)
+            log_fn('precision/validation_IoU_0.5',   avg_precision_50,  *kwargs)
+            log_fn('recall/validation_IoU_0.5',      avg_recall_50,     *kwargs)
+            log_fn('f1_score/validation_IoU_0.5',    avg_f1_score_50,   *kwargs)
+
 
         # Save the model using wandb if wandb is activated
         if self.use_wandb:
@@ -709,18 +704,21 @@ class LSSD3D(pl.LightningModule):
             avg_f1_score_50 = torch.stack([torch.FloatTensor([x["log"]["metrics_50"]["f1_score"]]) for x in
                                            outputs]).mean()  # change this if n_classes > 2
 
-            self.logger.experiment.add_scalar('mAP/training_IoU_0.1', avg_mAP_10, self.global_step)
-            self.logger.experiment.add_scalar('precision/training_IoU_0.1', avg_precision_10, self.global_step)
-            self.logger.experiment.add_scalar('recall/training_IoU_0.1', avg_recall_10, self.global_step)
-            self.logger.experiment.add_scalar('f1_score/training_IoU_0.1', avg_f1_score_10, self.global_step)
+            # Logging
+            log_fn = self.log if self.use_wandb else self.logger.experiment.add_scalar
+            kwargs = [self.global_step] if not self.use_wandb else []
+            log_fn('mAP/training_IoU_0.1',          avg_mAP_10,         *kwargs)
+            log_fn('precision/training_IoU_0.1',    avg_precision_10,   *kwargs)
+            log_fn('recall/training_IoU_0.1',       avg_recall_10,      *kwargs)
+            log_fn('f1_score/training_IoU_0.1',     avg_f1_score_10,    *kwargs)
 
-            self.logger.experiment.add_scalar('mAP/training_IoU_0.5', avg_mAP_50, self.global_step)
-            self.logger.experiment.add_scalar('precision/training_IoU_0.5', avg_precision_50, self.global_step)
-            self.logger.experiment.add_scalar('recall/training_IoU_0.5', avg_recall_50, self.global_step)
-            self.logger.experiment.add_scalar('f1_score/training_IoU_0.5', avg_f1_score_50, self.global_step)
+            log_fn('mAP/training_IoU_0.5',          avg_mAP_50,         *kwargs)
+            log_fn('precision/training_IoU_0.5',    avg_precision_50,   *kwargs)
+            log_fn('recall/training_IoU_0.5',       avg_recall_50,      *kwargs)
+            log_fn('f1_score/training_IoU_0.5',     avg_f1_score_50,    *kwargs)
 
             l1_norm = self.compute_parameters_median_size()
-            self.logger.experiment.add_scalar('hp_metric/parameter_sizes', l1_norm, self.global_step)
+            log_fn('hp_metric/parameter_sizes',     l1_norm,            *kwargs)
 
     def predict_step(self, batch, batch_idx: int, dataloader_idx: int = None):
         predicted_locs, predicted_scores = self(batch["img"])
@@ -957,7 +955,7 @@ class MultiBoxLoss(nn.Module):
 
 if __name__ == '__main__':
     pass
-    model = LSSD3D(n_classes=2, input_channels=1).to(device)
+    # model = LSSD3D(n_classes=2, input_channels=1).to(device)
     #
     # x = torch.rand(3, 1, 250, 300, 300).to(device)
     # locs, scores = model(x)
@@ -970,14 +968,13 @@ if __name__ == '__main__':
     # base = MobileNetBase(width_mult = 0.2, cube=True).cpu()
     # x = torch.rand(3, 1, 300, 300, 300).to(device)
 
-    base = MobileNetBase(width_mult = 1., cube=True).to(device)
+    model = LSSD3D(n_classes=2, input_channels=1, input_size=(64,64,64)).to(device)
+    # base = MobileNetBase(width_mult = 1., cube=True).to(device)
     x = torch.rand(3, 1, 64, 64, 64).to(device)
-    base(x)
-    print()
-    base = MobileNetBase(width_mult = 1., cube=False).to(device)
-    x = torch.rand(3, 1, 250, 300, 300).to(device)
-    base(x)
-    print()
-    base = MobileNetBase(width_mult = 1., cube=True).to(device)
-    x = torch.rand(3, 1, 300, 300, 300).to(device)
-    base(x)
+    gt_boxes = [torch.sort(torch.rand(1, 6), dim=1)[0].to(device) for i in range(3)]
+    gt_labels = [torch.LongTensor([1]).to(device) for i in range(3)]
+    # base(x)
+    criterion = MultiBoxLoss(model.priors_cxcycz)
+    criterion(*model(x), gt_boxes, gt_labels)
+
+

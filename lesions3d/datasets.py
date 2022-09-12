@@ -483,5 +483,8 @@ class ExampleDataset(pl.LightningDataModule):
 if __name__ == '__main__':
     pass
     import matplotlib.pyplot as plt
-    ds = ExampleDataset()
+    ds = ExampleDataset(subject="0000")
+    ds.setup("fit")
+    for b in ds.train_dataloader():
+        print(b)
 
