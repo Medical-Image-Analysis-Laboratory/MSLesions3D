@@ -10,7 +10,6 @@ from ssd3d import *
 from pytorch_lightning.loggers import TensorBoardLogger, WandbLogger
 import pytorch_lightning as pl
 import wandb
-
 wandb.login()
 import pickle
 import time
@@ -23,7 +22,8 @@ from os.path import exists as pexists
 parser = argparse.ArgumentParser()
 parser.add_argument('-d', '--dataset_path', type=str, help="path to dataset used for training and validation",
                     default=r'/home/wynen/MSLesions3D/data/artificial_dataset/multiple_objects/one_class/images')
-parser.add_argument('-su', '--subject', type=str, default='0000', help="if training has to be done on 1 subject, specify its id") # Set default to None
+parser.add_argument('-su', '--subject', type=str, default='0000',
+                    help="if training has to be done on 1 subject, specify its id")  # Set default to None
 parser.add_argument('-p', '--percentage', type=float, default=1., help="percentage of the whole dataset to train on")
 parser.add_argument('--n_classes', type=int, default=1, help="number of classes in dataset")
 parser.add_argument('-b', '--batch_size', type=int, default=8, help="training batch size")
@@ -39,12 +39,15 @@ parser.add_argument('-ld', '--logdir', type=str, default=r'/home/wynen/MSLesions
 parser.add_argument('-c', '--cache', type=bool, default=False, help="whether to cache the dataset or not")
 parser.add_argument('-nw', '--num_workers', type=int, default=8, help="number of workers for the dataset")
 parser.add_argument('-wm', '--width_mult', type=float, default=0.4, help="width multiplicator (MobileNet)")
-parser.add_argument('-en', '--experiment_name', type=str, default="one_subject_64", help="experiment name for tensorboard logdir")
-parser.add_argument('-wb', '--use_wandb', type=bool, default=True, help="whether to use weights and biases as logging tool")
+parser.add_argument('-en', '--experiment_name', type=str, default="one_subject_64",
+                    help="experiment name for tensorboard logdir")
+parser.add_argument('-wb', '--use_wandb', type=bool, default=True,
+                    help="whether to use weights and biases as logging tool")
+parser.add_argument('-me', '--max_epochs', type=int, default=20, help="maximum number of iterations")
 
 args = parser.parse_args()
 ARS = {l: [1.] for l in args.layers}
-SC = {int(k):v for k,v in args.scales.items()}
+SC = {int(k): v for k, v in args.scales.items()}
 print(args)
 print("Aspect ratios: ", ARS)
 print("Scales: ", SC)
@@ -116,6 +119,7 @@ def example():
                    compute_metric_every_n_epochs=5, use_wandb=args.use_wandb, ASPECT_RATIOS=ASPECT_RATIOS,
                    SCALES=SCALES, alpha=args.alpha)
     model.init()
+
 
     train_loader = dataset.train_dataloader()
     test_loader = dataset.test_dataloader()

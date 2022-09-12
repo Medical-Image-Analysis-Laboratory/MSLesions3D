@@ -7,7 +7,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 import pytorch_lightning as pl
 import warnings
-warnings.filterwarnings(action="ignore", message=".*TracerWarning.*")
+warnings.filterwarnings(action="ignore", message=".*Converting a tensor to a Python boolean.*")
+warnings.filterwarnings(action="ignore", message=".*sourceTensor.clone().detach().*")
 
 
 def conv_bn(inp, oup, stride):
