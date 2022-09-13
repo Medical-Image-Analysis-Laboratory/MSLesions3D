@@ -350,7 +350,7 @@ class LSSD3D(pl.LightningModule):
 
         return locs, classes_scores
 
-    def create_prior_boxes(self):
+    def create_prior_boxes(self, per_feature_map=False):
         """
         Create the xxx prior (default) boxes for the SSD 3D
 
@@ -365,7 +365,9 @@ class LSSD3D(pl.LightningModule):
         fmaps = list(fmap_dims.keys())
 
         prior_boxes = []
+        prior_boxes_per_feature_map = {}
         for l, fmap in enumerate(fmaps):
+            prior_boxes_per_feature_map[fmap] = list()
             for i in range(fmap_dims[fmap][0]):
                 for j in range(fmap_dims[fmap][1]):
                     for k in range(fmap_dims[fmap][2]):
@@ -373,21 +375,29 @@ class LSSD3D(pl.LightningModule):
                         cx = (j + 0.5) / fmap_dims[fmap][1]
                         cy = (i + 0.5) / fmap_dims[fmap][0]
 
-                        # for ratio in aspect_ratios[fmap]: # Commented because we only keep an aspect ratio=1
-                        prior_boxes.append([cx, cy, cz, obj_scales[fmap], obj_scales[fmap], obj_scales[fmap]])
+                        for ratio in aspect_ratios[fmap]: # Commented because we only keep an aspect ratio=1
+                            prior_boxes.append([cx, cy, cz, obj_scales[fmap], obj_scales[fmap], obj_scales[fmap]])
+                            prior_boxes_per_feature_map[fmap].append([cx, cy, cz, obj_scales[fmap],
+                                                                      obj_scales[fmap], obj_scales[fmap]])
 
-                        # Add a slightly bigger prior box
-                        try:
-                            additional_scale = sqrt(obj_scales[fmap] * obj_scales[fmaps[l + 1]])
-                        except IndexError:
-                            additional_scale = 1.
+                            if ratio == 1.:
+                                # Add a slightly bigger prior box
+                                try:
+                                    additional_scale = sqrt(obj_scales[fmap] * obj_scales[fmaps[l + 1]])
+                                except IndexError as e:
+                                    additional_scale = 1.
 
-                        prior_boxes.append([cx, cy, cz, additional_scale, additional_scale, additional_scale])
+                                prior_boxes.append([cx, cy, cz, additional_scale, additional_scale, additional_scale])
+                                prior_boxes_per_feature_map[fmap].append([cx, cy, cz, additional_scale,
+                                                                          additional_scale, additional_scale])
 
         prior_boxes = torch.FloatTensor(prior_boxes).to(device)
         prior_boxes.clamp_(0, 1)
 
-        return prior_boxes
+        if not per_feature_map:
+            return prior_boxes
+        else:
+            return prior_boxes_per_feature_map
 
     def detect_objects(self, predicted_locs, predicted_scores, min_score, max_overlap, top_k):
         """
@@ -427,7 +437,6 @@ class LSSD3D(pl.LightningModule):
             image_scores = list()
 
             # max_scores, best_label = predicted_scores[i].max(dim=1)  # (xxx)
-            # print(max_scores.shape)
 
             # Check for each class
             for c in range(1, self.n_classes):
