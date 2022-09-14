@@ -19,10 +19,10 @@ import json
 from os.path import join as pjoin
 from os.path import exists as pexists
 
-parser = argparse.ArgumentParser()
+parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 parser.add_argument('-d', '--dataset_path', type=str, help="path to dataset used for training and validation",
                     default=r'/home/wynen/MSLesions3D/data/artificial_dataset/multiple_objects/one_class/images')
-parser.add_argument('-su', '--subject', type=str, default='0000',
+parser.add_argument('-su', '--subject', type=str, default=None,
                     help="if training has to be done on 1 subject, specify its id")  # Set default to None
 parser.add_argument('-p', '--percentage', type=float, default=1., help="percentage of the whole dataset to train on")
 parser.add_argument('--n_classes', type=int, default=1, help="number of classes in dataset")
@@ -32,9 +32,9 @@ parser.add_argument('-sr', '--scheduler', type=str, default="CosineAnnealingLR",
 parser.add_argument('-l', '--layers', type=int, nargs='+', default=[3, 5, 7], help="layers to include in the network")
 parser.add_argument('-sc', '--scales', type=json.loads, default="{\"1\": 0.05, \"3\": 0.1, \"5\": 0.15, \"7\": 0.2}",
                     help="layers to include in the network")
-parser.add_argument('--alpha', type=int, default=[3, 5, 7],
+parser.add_argument('--alpha', type=int, default=1.,
                     help="alpha parameter for the multibox loss (= confidence loss + alpha * localization loss)")
-parser.add_argument('-a', '--augmentations', type=bool, default=False)
+parser.add_argument('-a', '--augmentations', type=str, nargs='+', default=["flip", "rotate90d", "affine"])
 parser.add_argument('-ld', '--logdir', type=str, default=r'/home/wynen/MSLesions3D/logs/artificial_dataset')
 parser.add_argument('-c', '--cache', type=bool, default=False, help="whether to cache the dataset or not")
 parser.add_argument('-nw', '--num_workers', type=int, default=8, help="number of workers for the dataset")
@@ -44,6 +44,7 @@ parser.add_argument('-en', '--experiment_name', type=str, default="one_subject_6
 parser.add_argument('-wb', '--use_wandb', type=bool, default=True,
                     help="whether to use weights and biases as logging tool")
 parser.add_argument('-me', '--max_epochs', type=int, default=20, help="maximum number of iterations")
+parser.add_argument('-cp', '--checkpoint', type=str, default=None, help="path to model to load if resuming training")
 
 args = parser.parse_args()
 ARS = {l: [1.] for l in args.layers}
