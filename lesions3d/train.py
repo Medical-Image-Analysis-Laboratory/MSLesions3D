@@ -10,6 +10,7 @@ from ssd3d import *
 from pytorch_lightning.loggers import TensorBoardLogger, WandbLogger
 import pytorch_lightning as pl
 import wandb
+
 wandb.login()
 import pickle
 import time
@@ -86,45 +87,35 @@ def pickle_dataset(dataset, dataset_file):
 def example():
     pl.seed_everything(970205)
 
-    n_classes = args.n_classes
-    batch_size = args.batch_size
-    lr = args.learning_rate
-    scheduler = args.scheduler
     augmentations = [("flip", {"spatial_axis": (0, 1, 2), "prob": .5}),
-                     ("rotate90", {'spatial_axes': (0, 1, 2), "prob": .5}),
+                     ("rotate90", {'spatial_axes': (1, 2), "prob": .5}),
+                     ("rotate90", {'spatial_axes': (0, 1), "prob": .5}),
+                     ("rotate90", {'spatial_axes': (0, 2), "prob": .5}),
                      ("affine", {"mode": ('bilinear', 'nearest'),
                                  "scale_range": (0.15, 0.15, 0.15), "padding_mode": 'reflection',
                                  "translate_range": (-15, 15),
                                  "shear_range": (-.1, .1),
                                  "prob": .7}),
-                     ] if args.augmentations else None
+                     ]
 
-
+    augmentations = [(n, i) for n, i in augmentations if n in args.augmentations]
 
     ASPECT_RATIOS = ARS
     SCALES = SC
-    alpha = 1.
-    comments = f"""
-    
-    Let's try with with ASPECT_RATIO = {ASPECT_RATIOS} and SCALES =  {SCALES}
-    
-    Back to alpha = {alpha}
-    
-    Augmentations = {augmentations}
-    
+    comments = f"""   
     """
 
-    dataset = ExampleDataset(n_classes=args.n_classes, subject = args.subject, percentage=args.percentage, cache=args.cache,
-                             num_workers=args.num_workers, objects="multiple", batch_size=args.batch_size,
-                             augmentations=augmentations)
+    dataset = ExampleDataset(n_classes=args.n_classes, subject=args.subject, percentage=args.percentage,
+                             cache=args.cache, num_workers=args.num_workers, objects="multiple",
+                             batch_size=args.batch_size, augmentations=augmentations)
     dataset.setup(stage="fit")
     input_size = tuple(dataset.train_dataset[0]["img"].shape)[1:]
 
     model = LSSD3D(n_classes=args.n_classes + 1, input_channels=1, lr=args.learning_rate, width_mult=args.width_mult,
-                   scheduler=args.scheduler, batch_size=args.batch_size, comments=comments, input_size = input_size,
-                   compute_metric_every_n_epochs=5, use_wandb=args.use_wandb, ASPECT_RATIOS=ASPECT_RATIOS, SCALES=SCALES)
+                   scheduler=args.scheduler, batch_size=args.batch_size, comments=comments, input_size=input_size,
+                   compute_metric_every_n_epochs=5, use_wandb=args.use_wandb, ASPECT_RATIOS=ASPECT_RATIOS,
+                   SCALES=SCALES, alpha=args.alpha)
     model.init()
-
 
     train_loader = dataset.train_dataloader()
     test_loader = dataset.test_dataloader()
@@ -133,11 +124,14 @@ def example():
     if not pexists(pjoin(logdir, args.experiment_name)):
         os.makedirs(pjoin(logdir, args.experiment_name))
     tb_logger = TensorBoardLogger(logdir, name=args.experiment_name, default_hp_metric=False)
-    wandb_logger = WandbLogger(project="WhiteBoxes64")
+    wandb_logger = WandbLogger(save_dir=args.logdir, project="WhiteBoxes64")
     logger = wandb_logger if args.use_wandb else tb_logger
-    trainer = pl.Trainer(accelerator="gpu", devices=1, max_epochs=100, logger=logger, enable_progress_bar=True, log_every_n_steps=1)
-    # trainer = pl.Trainer(gpus=1, max_epochs=600, fast_dev_run=False, logger=logger,  enable_progress_bar=True, log_every_n_steps=1,
-    #                      resume_from_checkpoint = r"C:\Users\Cristina\Desktop\MSLesions3D\tensorboard\example\full_dataset_400_100\version_21\checkpoints\epoch=63-step=3200.ckpt")
+    if args.checkpoint is None:
+        trainer = pl.Trainer(accelerator="gpu", devices=1, max_epochs=args.max_epochs, logger=logger,
+                             enable_progress_bar=True, log_every_n_steps=1)
+    else:
+        trainer = pl.Trainer(accelerator="gpu", devices=1, max_epochs=args.max_epochs, logger=logger,
+                             enable_progress_bar=True, log_every_n_steps=1, resume_from_checkpoint=args.checkpoint)
 
     trainer.fit(model=model, train_dataloaders=train_loader, val_dataloaders=test_loader)
 
@@ -186,7 +180,8 @@ def train_lesions():
 
     logdir = r"C:\Users\Cristina\Desktop\MSLesions3D\tensorboard\lesions"
     logger = TensorBoardLogger(logdir, name="zebardi", default_hp_metric=False)
-    trainer = pl.Trainer(accelerator="gpu", devices=1, max_epochs=750, logger=logger, enable_progress_bar=True, log_every_n_steps=1)
+    trainer = pl.Trainer(accelerator="gpu", devices=1, max_epochs=750, logger=logger, enable_progress_bar=True,
+                         log_every_n_steps=1)
 
     trainer.fit(model=model, train_dataloaders=train_loader, val_dataloaders=test_loader)
 
