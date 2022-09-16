@@ -45,7 +45,8 @@ parser.add_argument('-en', '--experiment_name', type=str, default="multiple_subj
                     help="experiment name for tensorboard logdir")
 parser.add_argument('-wb', '--use_wandb', type=bool, default=True,
                     help="whether to use weights and biases as logging tool")
-parser.add_argument('-me', '--max_epochs', type=int, default=50, help="maximum number of iterations")
+parser.add_argument('-me', '--max_epochs', type=int, default=None, help="maximum number of epochs")
+parser.add_argument('-mi', '--max_iterations', type=int, default=4000, help="maximum number of iterations")
 parser.add_argument('-cp', '--checkpoint', type=str, default=None, help="path to model to load if resuming training")
 
 args = parser.parse_args()
@@ -54,6 +55,8 @@ SC = {int(k): v for k, v in args.scales.items()}
 print(args)
 print("Aspect ratios: ", ARS)
 print("Scales: ", SC)
+if args.max_epochs:
+    args.max_iterations=None
 
 
 def tune_lr():
@@ -135,11 +138,12 @@ def example():
     wandb_logger = WandbLogger(save_dir=args.logdir, project="WhiteBoxes64")
     logger = wandb_logger if args.use_wandb else tb_logger
     if args.checkpoint is None:
-        trainer = pl.Trainer(accelerator="gpu", devices=1, max_epochs=args.max_epochs, logger=logger,
-                             enable_progress_bar=True, log_every_n_steps=1)
+        trainer = pl.Trainer(accelerator="gpu", devices=1, max_epochs=args.max_epochs, max_steps= args.max_iterations,
+                             logger=logger, enable_progress_bar=True, log_every_n_steps=1)
     else:
-        trainer = pl.Trainer(accelerator="gpu", devices=1, max_epochs=args.max_epochs, logger=logger,
-                             enable_progress_bar=True, log_every_n_steps=1, resume_from_checkpoint=args.checkpoint)
+        trainer = pl.Trainer(accelerator="gpu", devices=1, max_epochs=args.max_epochs, max_steps=args.max_iterations,
+                             logger=logger, enable_progress_bar=True, log_every_n_steps=1,
+                             resume_from_checkpoint=args.checkpoint)
 
     trainer.fit(model=model, train_dataloaders=train_loader, val_dataloaders=test_loader)
 
