@@ -17,7 +17,7 @@ from datetime import datetime
 import argparse
 import json
 from os.path import join as pjoin
-from os.path import exists as pexists
+from os.path import exists as pexists 
 
 parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 parser.add_argument('-d', '--dataset_path', type=str, help="path to dataset used for training and validation",
@@ -98,7 +98,6 @@ def example():
                      ("affine", {"mode": ('bilinear', 'nearest'),
                                  "scale_range": (0.15, 0.15, 0.15), "padding_mode": 'reflection',
                                  "translate_range": (-15, 15),
-                                 "shear_range": (-.1, .1),
                                  "prob": .7}),
                      ]
 
@@ -111,7 +110,7 @@ def example():
 
     dataset = ExampleDataset(n_classes=args.n_classes, subject=args.subject, percentage=args.percentage,
                              cache=args.cache, num_workers=args.num_workers, objects="multiple",
-                             batch_size=args.batch_size, augmentations=augmentations)
+                             batch_size=args.batch_size, augmentations=augmentations, data_dir=args.dataset_path)
     dataset.setup(stage="fit")
     input_size = tuple(dataset.train_dataset[0]["img"].shape)[1:]
 
@@ -131,6 +130,7 @@ def example():
     tb_logger = TensorBoardLogger(logdir, name=args.experiment_name, default_hp_metric=False)
     wandb_logger = WandbLogger(save_dir=args.logdir, project="WhiteBoxes64")
     logger = wandb_logger if args.use_wandb else tb_logger
+    print(f"\n\n\n*** wandb run dir : {wandb.run.dir}\n\n\n")
     if args.checkpoint is None:
         trainer = pl.Trainer(accelerator="gpu", devices=1, max_epochs=args.max_epochs, logger=logger,
                              enable_progress_bar=True, log_every_n_steps=1)
