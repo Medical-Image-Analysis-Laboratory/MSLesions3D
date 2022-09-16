@@ -31,6 +31,7 @@ parser.add_argument('--noise', type=int, default=1, help="whether to add noise t
 parser.add_argument('--output_dir', type=str, required=True,
                     default=rf"/home/wynen/MSLesions3D/data/artificial_dataset/", help="output directory")
 parser.add_argument('--random_seed', type=int, default=0, help="random seed")
+parser.add_argument('--box_noise', type=int, default=0, help="whether to add random noise the boxes intensity or not")
 
 args = parser.parse_args()
 dim = args.dim # 3
@@ -41,6 +42,7 @@ n_classes = args.n_classes # 1
 num_processes = args.num_processes # 8
 num_images = args.num_images # 500
 add_noise = bool(args.noise)
+box_noise = bool(args.box_noise)
 num_objects = args.num_objects
 random_seed = args.random_seed
 print(f"Random seed set at {random_seed}")
@@ -78,7 +80,8 @@ def generate_image(image_dir, label_dir, idx, n_classes, noise=add_noise):
 
         if selected_class == 0:
             slicing = tuple([slice(tp, tp + selected_size) for tp in top_left])
-            data[slicing] = data[slicing] + 0.4 if noise else np.random.uniform(0.5, 1)
+            intensity = 1 if not box_noise else np.random.uniform(0.5, 1)
+            data[slicing] = data[slicing] + 0.4 if noise else intensity
             data = data.clip(0, 1)
             mask[slicing] = 1
         elif selected_class == 1:
@@ -93,7 +96,8 @@ def generate_image(image_dir, label_dir, idx, n_classes, noise=add_noise):
             object_mask[slicing] = 1
             object_mask[inner_slicing] = 0
 
-            data[object_mask] = data[object_mask] + 0.4 if noise else np.random.uniform(0.5, 1)
+            intensity = 1 if not box_noise else np.random.uniform(0.5, 1)
+            data[object_mask] = data[object_mask] + 0.4 if noise else intensity
             data = data.clip(0, 1)
             mask[object_mask] = 2
         else:
