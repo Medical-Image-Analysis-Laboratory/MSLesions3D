@@ -21,7 +21,7 @@ from os.path import exists as pexists
 
 parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 parser.add_argument('-d', '--dataset_path', type=str, help="path to dataset used for training and validation",
-                    default=r'/home/wynen/MSLesions3D/data/artificial_dataset/multiple_objects/one_class/images')
+                    default=r'/home/wynen/MSLesions3D/data/artificial_dataset/')
 parser.add_argument('-su', '--subject', type=str, default=None,
                     help="if training has to be done on 1 subject, specify its id")  # Set default to None
 parser.add_argument('-p', '--percentage', type=float, default=1., help="percentage of the whole dataset to train on")
@@ -43,7 +43,8 @@ parser.add_argument('-en', '--experiment_name', type=str, default="one_subject_6
                     help="experiment name for tensorboard logdir")
 parser.add_argument('-wb', '--use_wandb', type=bool, default=True,
                     help="whether to use weights and biases as logging tool")
-parser.add_argument('-me', '--max_epochs', type=int, default=20, help="maximum number of iterations")
+parser.add_argument('-me', '--max_epochs', type=int, default=None, help="maximum number of epochs")
+parser.add_argument('-mi', '--max_iterations', type=int, default=4000, help="maximum number of iterations")
 parser.add_argument('-cp', '--checkpoint', type=str, default=None, help="path to model to load if resuming training")
 
 args = parser.parse_args()
@@ -52,6 +53,8 @@ SC = {int(k): v for k, v in args.scales.items()}
 print(args)
 print("Aspect ratios: ", ARS)
 print("Scales: ", SC)
+if args.max_epochs:
+    args.max_iterations=None
 
 
 def tune_lr():
@@ -132,11 +135,12 @@ def example():
     logger = wandb_logger if args.use_wandb else tb_logger
     print(f"\n\n\n*** wandb run dir : {wandb.run.dir}\n\n\n")
     if args.checkpoint is None:
-        trainer = pl.Trainer(accelerator="gpu", devices=1, max_epochs=args.max_epochs, logger=logger,
-                             enable_progress_bar=True, log_every_n_steps=1)
+        trainer = pl.Trainer(accelerator="gpu", devices=1, max_epochs=args.max_epochs, max_steps= args.max_iterations,
+                             logger=logger, enable_progress_bar=True, log_every_n_steps=1)
     else:
-        trainer = pl.Trainer(accelerator="gpu", devices=1, max_epochs=args.max_epochs, logger=logger,
-                             enable_progress_bar=True, log_every_n_steps=1, resume_from_checkpoint=args.checkpoint)
+        trainer = pl.Trainer(accelerator="gpu", devices=1, max_epochs=args.max_epochs, max_steps=args.max_iterations,
+                             logger=logger, enable_progress_bar=True, log_every_n_steps=1,
+                             resume_from_checkpoint=args.checkpoint)
 
     trainer.fit(model=model, train_dataloaders=train_loader, val_dataloaders=test_loader)
 
