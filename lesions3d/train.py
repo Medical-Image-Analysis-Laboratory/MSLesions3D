@@ -19,6 +19,8 @@ import json
 from os.path import join as pjoin
 from os.path import exists as pexists 
 
+torch.multiprocessing.set_sharing_strategy('file_system')
+
 parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 parser.add_argument('-d', '--dataset_path', type=str, help="path to dataset used for training and validation",
                     default=r'/home/wynen/MSLesions3D/data/artificial_dataset/')
@@ -46,6 +48,7 @@ parser.add_argument('-wb', '--use_wandb', type=bool, default=True,
 parser.add_argument('-me', '--max_epochs', type=int, default=None, help="maximum number of epochs")
 parser.add_argument('-mi', '--max_iterations', type=int, default=4000, help="maximum number of iterations")
 parser.add_argument('-cp', '--checkpoint', type=str, default=None, help="path to model to load if resuming training")
+parser.add_argument('-v', '--verbose', type=int, default=0, help="dataset verbose")
 
 args = parser.parse_args()
 ARS = {l: [1.] for l in args.layers}
@@ -112,7 +115,7 @@ def example():
     """
 
     dataset = ExampleDataset(n_classes=args.n_classes, subject=args.subject, percentage=args.percentage,
-                             cache=args.cache, num_workers=args.num_workers, objects="multiple",
+                             cache=args.cache, num_workers=args.num_workers, objects="multiple", verbose=bool(args.verbose),
                              batch_size=args.batch_size, augmentations=augmentations, data_dir=args.dataset_path)
     dataset.setup(stage="fit")
     input_size = tuple(dataset.train_dataset[0]["img"].shape)[1:]
