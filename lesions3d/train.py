@@ -31,12 +31,12 @@ parser.add_argument('--n_classes', type=int, default=1, help="number of classes 
 parser.add_argument('-b', '--batch_size', type=int, default=8, help="training batch size")
 parser.add_argument('-lr', '--learning_rate', type=float, default=0.001, help="training learning rate")
 parser.add_argument('-sr', '--scheduler', type=str, default="CosineAnnealingLR", help="learning rate scheduler")
-parser.add_argument('-l', '--layers', type=int, nargs='+', default=[3, 5, 7], help="layers to include in the network")
+parser.add_argument('-l', '--layers', type=str, default="3 5 7", help="layers to include in the network")
 parser.add_argument('-sc', '--scales', type=json.loads, default="{\"1\": 0.05, \"3\": 0.1, \"5\": 0.15, \"7\": 0.2}",
                     help="layers to include in the network")
 parser.add_argument('--alpha', type=int, default=1.,
                     help="alpha parameter for the multibox loss (= confidence loss + alpha * localization loss)")
-parser.add_argument('-a', '--augmentations', type=str, nargs='+', default=["flip", "rotate90d", "affine"])
+parser.add_argument('-a', '--augmentations', type=str, nargs='*', default=["flip", "rotate90d", "affine"])
 parser.add_argument('-ld', '--logdir', type=str, default=r'/home/wynen/MSLesions3D/logs/artificial_dataset')
 parser.add_argument('-c', '--cache', type=bool, default=False, help="whether to cache the dataset or not")
 parser.add_argument('-nw', '--num_workers', type=int, default=8, help="number of workers for the dataset")
@@ -49,9 +49,23 @@ parser.add_argument('-me', '--max_epochs', type=int, default=None, help="maximum
 parser.add_argument('-mi', '--max_iterations', type=int, default=4000, help="maximum number of iterations")
 parser.add_argument('-cp', '--checkpoint', type=str, default=None, help="path to model to load if resuming training")
 parser.add_argument('-v', '--verbose', type=int, default=0, help="dataset verbose")
+parser.add_argument('-rs', '--seed', type=int, default=970205, help="random seed")
 
+# Get the hyperparameters
 args = parser.parse_args()
-ARS = {l: [1.] for l in args.layers}
+# Pass them to wandb.init
+wandb.init(config=args)
+# Access all hyperparameter values through wandb.config
+args = wandb.config
+
+try:
+    layers = [int(x) for x in args.layers.split()]
+except ValueError:
+    print("Layers argument must be a sequence of integers separated by a space ' '")
+    print("Run this script help to know more (--help)")
+    exit()
+
+ARS = {l: [1.] for l in layers}
 SC = {int(k): v for k, v in args.scales.items()}
 print(args)
 print("Aspect ratios: ", ARS)
@@ -95,7 +109,7 @@ def pickle_dataset(dataset, dataset_file):
 
 
 def example():
-    pl.seed_everything(970205)
+    pl.seed_everything(args.seed)
 
     augmentations = [("flip", {"spatial_axis": (0, 1, 2), "prob": .5}),
                      ("rotate90", {'spatial_axes': (1, 2), "prob": .5}),
@@ -113,13 +127,13 @@ def example():
     ASPECT_RATIOS = ARS
     SCALES = SC
     comments = f"""  
-    COMMIT 5
+    COMMIT 6
     """
 
     dataset = ExampleDataset(n_classes=args.n_classes, subject=args.subject, percentage=args.percentage,
-                             cache=args.cache, num_workers=args.num_workers, objects="multiple",
+                             cache=args.cache, num_workers=args.num_workers, objects="multiple", verbose=bool(args.verbose),
                              batch_size=args.batch_size, augmentations=augmentations, data_dir=args.dataset_path,
-                             dataset_name=args.dataset_name, verbose=bool(args.verbose))
+                             dataset_name=args.dataset_name)
     dataset.setup(stage="fit")
     input_size = tuple(dataset.train_dataset[0]["img"].shape)[1:]
 
