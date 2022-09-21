@@ -418,7 +418,9 @@ class ExampleDataset(pl.LightningDataModule):
                     transform = (transform, {})
                 t_name, kwargs = transform
 
-                if self.verbose: list_of_transforms.append(Lambdad(keys=["img"], func=Printer(t_name)))
+                if self.verbose: 
+                    list_of_transforms.append(Lambdad(keys=["img"], func=Printer(t_name)))
+                    list_of_transforms.append(Lambdad(keys=["subject"], func=Printer(t_name)))
                 list_of_transforms.append(get_transform_from_name(t_name, **kwargs))
                 if self.show: list_of_transforms.append(ShowImage(keys=["img", "seg"], dim=2, grid=True, msg=t_name))
 
