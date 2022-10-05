@@ -22,6 +22,8 @@ from os.path import exists as pexists
 parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 parser.add_argument('-d', '--dataset_path', type=str, help="path to dataset used for training and validation",
                     default=r'../data/artificial_dataset/multiple_objects/one_class/images')
+parser.add_argument('-dn', '--dataset_name', type=str, help="name of dataset to use",
+                    default=None)
 parser.add_argument('-su', '--subject', type=str, default=None,
                     help="if training has to be done on 1 subject, specify its id")  # Set default to None
 parser.add_argument('-p', '--percentage', type=float, default=1., help="percentage of the whole dataset to train on")
@@ -107,12 +109,12 @@ def example():
     ASPECT_RATIOS = ARS
     SCALES = SC
     comments = f"""  
-    Re-trying with old dataset (#1k_n6-12_s6-14)
+    COMMIT 1
     """
 
     dataset = ExampleDataset(n_classes=args.n_classes, subject=args.subject, percentage=args.percentage,
                              cache=args.cache, num_workers=args.num_workers, objects="multiple",
-                             batch_size=args.batch_size, augmentations=augmentations)
+                             batch_size=args.batch_size, augmentations=augmentations, dataset_name=args.dataset_name)
     dataset.setup(stage="fit")
     input_size = tuple(dataset.train_dataset[0]["img"].shape)[1:]
 
