@@ -21,7 +21,7 @@ from os.path import exists as pexists
 
 parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 parser.add_argument('-d', '--dataset_path', type=str, help="path to dataset used for training and validation",
-                    default=r'../data/artificial_dataset/multiple_objects/one_class/images')
+                    default=r'../data/artificial_dataset')
 parser.add_argument('-dn', '--dataset_name', type=str, help="name of dataset to use",
                     default=None)
 parser.add_argument('-su', '--subject', type=str, default=None,
