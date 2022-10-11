@@ -17,19 +17,21 @@ from datetime import datetime
 import argparse
 import json
 from os.path import join as pjoin
-from os.path import exists as pexists 
+from os.path import exists as pexists
 
-torch.multiprocessing.set_sharing_strategy('file_system')
+# torch.multiprocessing.set_sharing_strategy('file_system')
 
 parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 parser.add_argument('-d', '--dataset_path', type=str, help="path to dataset used for training and validation",
-                    default=r'/home/wynen/MSLesions3D/data/artificial_dataset/')
+                    default=r'../data/artificial_dataset')
+parser.add_argument('-dn', '--dataset_name', type=str, help="name of dataset to use",
+                    default=None)
 parser.add_argument('-su', '--subject', type=str, default=None,
                     help="if training has to be done on 1 subject, specify its id")  # Set default to None
 parser.add_argument('-p', '--percentage', type=float, default=1., help="percentage of the whole dataset to train on")
 parser.add_argument('--n_classes', type=int, default=1, help="number of classes in dataset")
 parser.add_argument('-b', '--batch_size', type=int, default=8, help="training batch size")
-parser.add_argument('-lr', '--learning_rate', type=float, default=0.0005, help="training learning rate")
+parser.add_argument('-lr', '--learning_rate', type=float, default=0.001, help="training learning rate")
 parser.add_argument('-sr', '--scheduler', type=str, default="CosineAnnealingLR", help="learning rate scheduler")
 parser.add_argument('-l', '--layers', type=str, default="3 5 7", help="layers to include in the network")
 parser.add_argument('-sc', '--scales', type=json.loads, default="{\"1\": 0.05, \"3\": 0.1, \"5\": 0.15, \"7\": 0.2}",
@@ -41,7 +43,7 @@ parser.add_argument('-ld', '--logdir', type=str, default=r'/home/wynen/MSLesions
 parser.add_argument('-c', '--cache', type=bool, default=False, help="whether to cache the dataset or not")
 parser.add_argument('-nw', '--num_workers', type=int, default=8, help="number of workers for the dataset")
 parser.add_argument('-wm', '--width_mult', type=float, default=0.4, help="width multiplicator (MobileNet)")
-parser.add_argument('-en', '--experiment_name', type=str, default="one_subject_64",
+parser.add_argument('-en', '--experiment_name', type=str, default="multiple_subjects_64",
                     help="experiment name for tensorboard logdir")
 parser.add_argument('-wb', '--use_wandb', type=bool, default=True,
                     help="whether to use weights and biases as logging tool")
@@ -117,7 +119,7 @@ def example():
                      ("rotate90", {'spatial_axes': (0, 2), "prob": .5}),
                      ("affine", {"mode": ('bilinear', 'nearest'),
                                  "scale_range": (0.15, 0.15, 0.15), "padding_mode": 'reflection',
-                                 "translate_range": (-4, 4),
+                                 "translate_range": (-3, 3),
                                  "prob": .7}),
                      ]
 
@@ -130,7 +132,8 @@ def example():
 
     dataset = ExampleDataset(n_classes=args.n_classes, subject=args.subject, percentage=args.percentage,
                              cache=args.cache, num_workers=args.num_workers, objects="multiple", verbose=bool(args.verbose),
-                             batch_size=args.batch_size, augmentations=augmentations, data_dir=args.dataset_path)
+                             batch_size=args.batch_size, augmentations=augmentations, data_dir=args.dataset_path,
+                             dataset_name=args.dataset_name)
     dataset.setup(stage="fit")
     input_size = tuple(dataset.train_dataset[0]["img"].shape)[1:]
 

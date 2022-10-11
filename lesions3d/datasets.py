@@ -359,7 +359,8 @@ def stats_foreground(ds, show=False):
 class ExampleDataset(pl.LightningDataModule):
     def __init__(self, n_classes=1, objects="multiple", percentage=1., augmentations=None, batch_size=8,
                  num_workers=int(os.cpu_count() / 2), verbose=False, show=False, random_state=970205, cache=False,
-                 subject=None, data_dir="/home/wynen/MSLesions3D/data/artificial_dataset"):
+                 subject=None, data_dir="/home/wynen/PycharmProjects/MSLesions3D/data/artificial_dataset",
+                 dataset_name=None):
 
         super().__init__()
 
@@ -370,6 +371,8 @@ class ExampleDataset(pl.LightningDataModule):
 
         self.data_dir = pjoin(self.data_dir, "one_class") if n_classes == 1 else \
             pjoin(self.data_dir, "double_class")
+        self.data_dir = self.data_dir if dataset_name is None else pjoin(self.data_dir, dataset_name)
+
         self.batch_size = batch_size
         self.num_workers = num_workers
         self.random_state = random_state
