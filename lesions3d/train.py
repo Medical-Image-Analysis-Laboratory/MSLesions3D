@@ -18,6 +18,7 @@ import argparse
 import json
 from os.path import join as pjoin
 from os.path import exists as pexists
+from pytorch_lightning.callbacks import EarlyStopping
 
 # torch.multiprocessing.set_sharing_strategy('file_system')
 
@@ -52,6 +53,8 @@ parser.add_argument('-mi', '--max_iterations', type=int, default=4000, help="max
 parser.add_argument('-cp', '--checkpoint', type=str, default=None, help="path to model to load if resuming training")
 parser.add_argument('-v', '--verbose', type=int, default=0, help="dataset verbose")
 parser.add_argument('-rs', '--seed', type=int, default=970205, help="random seed")
+parser.add_argument('-es', '--early_stopping', type=bool, default=True, help="whether to use early stopping or not")
+parser.add_argument('-cm', '--compute_metric_every_n_epochs', type=int, default=1, help="compute the metric every n epochs")
 
 # Get the hyperparameters
 args = parser.parse_args()
@@ -73,7 +76,7 @@ print(args)
 print("Aspect ratios: ", ARS)
 print("Scales: ", SC)
 if args.max_epochs:
-    args.max_iterations=None
+    args.update({'max_iterations':-1}, allow_val_change=True)
 
 
 def tune_lr():
@@ -153,13 +156,17 @@ def example():
     tb_logger = TensorBoardLogger(logdir, name=args.experiment_name, default_hp_metric=False)
     wandb_logger = WandbLogger(save_dir=args.logdir, project="WhiteBoxes64")
     logger = wandb_logger if args.use_wandb else tb_logger
-    if args.checkpoint is None:
-        trainer = pl.Trainer(accelerator="gpu", devices=1, max_epochs=args.max_epochs, max_steps= args.max_iterations,
-                             logger=logger, enable_progress_bar=True, log_every_n_steps=1)
-    else:
-        trainer = pl.Trainer(accelerator="gpu", devices=1, max_epochs=args.max_epochs, max_steps=args.max_iterations,
-                             logger=logger, enable_progress_bar=True, log_every_n_steps=1,
-                             resume_from_checkpoint=args.checkpoint)
+    # if args.checkpoint is None:
+    #     trainer = pl.Trainer(accelerator="gpu", devices=1, max_epochs=args.max_epochs, max_steps= args.max_iterations,
+    #                          logger=logger, enable_progress_bar=True, log_every_n_steps=1)
+    # else:
+    #     trainer = pl.Trainer(accelerator="gpu", devices=1, max_epochs=args.max_epochs, max_steps=args.max_iterations,
+    #                          logger=logger, enable_progress_bar=True, log_every_n_steps=1,
+    #                          resume_from_checkpoint=args.checkpoint)
+    trainer = pl.Trainer(accelerator="gpu", devices=1, max_epochs=args.max_epochs, max_steps=args.max_iterations,
+                         logger=logger, enable_progress_bar=True, log_every_n_steps=1,
+                         callbacks=[EarlyStopping('total_loss/validation')],
+                         resume_from_checkpoint=args.checkpoint)
 
     trainer.fit(model=model, train_dataloaders=train_loader, val_dataloaders=test_loader)
 
