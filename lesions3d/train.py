@@ -20,7 +20,7 @@ from os.path import join as pjoin
 from os.path import exists as pexists
 from pytorch_lightning.callbacks import EarlyStopping
 
-# torch.multiprocessing.set_sharing_strategy('file_system')
+torch.multiprocessing.set_sharing_strategy('file_system')
 
 parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 parser.add_argument('-d', '--dataset_path', type=str, help="path to dataset used for training and validation",
@@ -40,7 +40,7 @@ parser.add_argument('-sc', '--scales', type=json.loads, default="{\"1\": 0.05, \
 parser.add_argument('--alpha', type=int, default=1.,
                     help="alpha parameter for the multibox loss (= confidence loss + alpha * localization loss)")
 parser.add_argument('-a', '--augmentations', type=str, nargs='*', default=["flip", "rotate90d", "affine"])
-parser.add_argument('-ld', '--logdir', type=str, default=r'/home/wynen/MSLesions3D/logs/artificial_dataset')
+parser.add_argument('-ld', '--logdir', type=str, default=r'../logs/artificial_dataset')
 parser.add_argument('-c', '--cache', type=bool, default=False, help="whether to cache the dataset or not")
 parser.add_argument('-nw', '--num_workers', type=int, default=8, help="number of workers for the dataset")
 parser.add_argument('-wm', '--width_mult', type=float, default=0.4, help="width multiplicator (MobileNet)")
@@ -156,13 +156,6 @@ def example():
     tb_logger = TensorBoardLogger(logdir, name=args.experiment_name, default_hp_metric=False)
     wandb_logger = WandbLogger(save_dir=args.logdir, project="WhiteBoxes64")
     logger = wandb_logger if args.use_wandb else tb_logger
-    # if args.checkpoint is None:
-    #     trainer = pl.Trainer(accelerator="gpu", devices=1, max_epochs=args.max_epochs, max_steps= args.max_iterations,
-    #                          logger=logger, enable_progress_bar=True, log_every_n_steps=1)
-    # else:
-    #     trainer = pl.Trainer(accelerator="gpu", devices=1, max_epochs=args.max_epochs, max_steps=args.max_iterations,
-    #                          logger=logger, enable_progress_bar=True, log_every_n_steps=1,
-    #                          resume_from_checkpoint=args.checkpoint)
     trainer = pl.Trainer(accelerator="gpu", devices=1, max_epochs=args.max_epochs, max_steps=args.max_iterations,
                          logger=logger, enable_progress_bar=True, log_every_n_steps=1,
                          callbacks=[EarlyStopping('total_loss/validation')],

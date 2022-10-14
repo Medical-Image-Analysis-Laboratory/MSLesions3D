@@ -14,15 +14,12 @@ from math import sqrt
 from utils import *
 import wandb
 import os
+from os.path import join as pjoin
+from os.path import exists as pexists
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-# ASPECT_RATIOS = {3:[1.], 5: [1.], 13: [1.]}
-# ASPECT_RATIOS = {3:[1.], 5: [1.], }
 ASPECT_RATIOS = {3:[1.], 5: [1.], 7: [1]}
-# ASPECT_RATIOS = {3: [1.], 13:[1.]}
-# ASPECT_RATIOS = {3: [1.]}
-# ASPECT_RATIOS = {13: [1.]}
 
 SCALES = {1: 0.025,
           3: 0.05,
@@ -692,7 +689,10 @@ class LSSD3D(pl.LightningModule):
         if self.use_wandb:
             dummy_input = torch.rand((1, self.input_channels, *self.input_size), device=self.device)
             model_filename = "model_final.onnx"
-            self.to_onnx(model_filename, dummy_input, export_params=True)
+            log_dir = pjoin(wandb.config["logdir"], wandb.run.project, wandb.run.id)
+            if not pexists(log_dir):
+                os.makedirs(log_dir)
+            self.to_onnx(pjoin(log_dir,model_filename), dummy_input, export_params=True)
             wandb.save(model_filename)
 
     def training_epoch_end(self, outputs):
