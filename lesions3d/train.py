@@ -19,14 +19,15 @@ import json
 from os.path import join as pjoin
 from os.path import exists as pexists
 from pytorch_lightning.callbacks import EarlyStopping
+os.environ["CUDA_LAUNCH_BLOCKING"] = "1"
+
 
 torch.multiprocessing.set_sharing_strategy('file_system')
 
 parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 parser.add_argument('-d', '--dataset_path', type=str, help="path to dataset used for training and validation",
                     default=r'../data/artificial_dataset')
-parser.add_argument('-dn', '--dataset_name', type=str, help="name of dataset to use",
-                    default=None)
+parser.add_argument('-dn', '--dataset_name', type=str, help="name of dataset to use", default="#3k_64_n1-5_s6-14")
 parser.add_argument('-su', '--subject', type=str, default=None,
                     help="if training has to be done on 1 subject, specify its id")  # Set default to None
 parser.add_argument('-p', '--percentage', type=float, default=1., help="percentage of the whole dataset to train on")
@@ -34,6 +35,7 @@ parser.add_argument('--n_classes', type=int, default=1, help="number of classes 
 parser.add_argument('-b', '--batch_size', type=int, default=8, help="training batch size")
 parser.add_argument('-lr', '--learning_rate', type=float, default=0.001, help="training learning rate")
 parser.add_argument('-sr', '--scheduler', type=str, default="CosineAnnealingLR", help="learning rate scheduler")
+parser.add_argument('-th', '--threshold', type=float, default=[0.1,0.2], nargs='+', help="training IoU threshold for box matching (cf Amemiya 2021)")
 parser.add_argument('-l', '--layers', type=str, default="3 5 7", help="layers to include in the network")
 parser.add_argument('-sc', '--scales', type=json.loads, default="{\"1\": 0.05, \"3\": 0.1, \"5\": 0.15, \"7\": 0.2}",
                     help="layers to include in the network")
@@ -143,7 +145,7 @@ def example():
     model = LSSD3D(n_classes=args.n_classes + 1, input_channels=1, lr=args.learning_rate, width_mult=args.width_mult,
                    scheduler=args.scheduler, batch_size=args.batch_size, comments=comments, input_size=input_size,
                    compute_metric_every_n_epochs=5, use_wandb=args.use_wandb, ASPECT_RATIOS=ASPECT_RATIOS,
-                   SCALES=SCALES, alpha=args.alpha)
+                   SCALES=SCALES, alpha=args.alpha, threshold=args.threshold)
     model.init()
 
 

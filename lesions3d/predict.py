@@ -23,18 +23,21 @@ from monai.data import decollate_batch
 from monai.transforms import SaveImaged
 import argparse
 
-parser = argparse.ArgumentParser()
+parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+parser.add_argument('-d', '--dataset_path', type=str, help="path to dataset used for training and validation",
+                    default=r'../data/artificial_dataset')
+parser.add_argument('-dn', '--dataset_name', type=str, help="name of dataset to use",
+                    default=None)
 parser.add_argument('-m', '--model_path', type=str, help="path to model",
-                    default=r'/home/wynen/MSLesions3D/logs/artificial_dataset/WhiteBoxes64/1nv7tggm/checkpoints/epoch=79-step=80.ckpt')
-parser.add_argument('-d', '--dataset', type=str, help="dataset to use", choices=['artificial', 'lesion'], default=r'artificial')
+                    default=r'model_final.onnx')
 parser.add_argument('-p', '--percentage', type=float, help="percentage of the dataset to predict on", default=1.)
 parser.add_argument('-su', '--subject', type=str, default='0000',
                     help="if prediction has to be done on 1 subject only, specify its id")
 parser.add_argument('-c', '--n_classes', type=int, help="number of classes in dataset", default=1)
 parser.add_argument('-nw', '--num_workers', type=int, default=8, help="number of workers for the dataset")
 parser.add_argument('-ps', '--predict_subset', type=str, help="subset to predict on", choices=['train', 'validation', 'test'], default=r'train')
-parser.add_argument('-sc', '--min_score', type=float, help="minimum score for a candidate box to be considered as positive in the visualisation", default=0.) #0.5
-parser.add_argument('-k', '--top_k', type=int, help="if there are a lot of resulting detection across all classes, keep only the top 'k'", default=10000) #100
+parser.add_argument('-sc', '--min_score', type=float, help="minimum score for a candidate box to be considered as positive in the visualisation", default=0.5) #0.5
+parser.add_argument('-k', '--top_k', type=int, help="if there are a lot of resulting detection across all classes, keep only the top 'k'", default=100) #100
 parser.add_argument('-o', '--output_dir', type=str, help="path to output", default=r"../data/predictions/")
 args = parser.parse_args()
 
@@ -132,8 +135,6 @@ def compute_subjects_mAP(model, loader = None, dataset=None, subject_id = None, 
         return all_metrics
 
 
-
-
 def save_predictions_example(loader, det_locs, det_labels, det_scores, min_score=0.5,
                              output_dir=r"./predictions", save_images=True):
     print("Saving predictions ...")
@@ -220,8 +221,11 @@ def predict_example(output_dir, subject=None, percentage=1., predict_subset="tra
 
     path = args.model_path
 
-    dataset = ExampleDataset(n_classes=args.n_classes, percentage=percentage, subject=subject,
-                             cache=False, num_workers=args.num_workers, objects="multiple", batch_size=1)
+    # dataset = ExampleDataset(n_classes=args.n_classes, percentage=percentage, subject=subject,
+    #                          cache=False, num_workers=args.num_workers, objects="multiple", batch_size=1)
+    dataset = ExampleDataset(n_classes=args.n_classes, subject=args.subject, percentage=args.percentage,
+                             cache=False, num_workers=args.num_workers, objects="multiple",
+                             batch_size=1, data_dir=args.dataset_path, dataset_name=args.dataset_name)
     dataset.setup(stage="predict")
     if predict_subset == "train":
         loader = dataset.predict_train_dataloader()

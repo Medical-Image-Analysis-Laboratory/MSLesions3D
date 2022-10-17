@@ -17,7 +17,7 @@ from pathlib import Path
 import argparse
 import numpy as np
 
-parser = argparse.ArgumentParser()
+parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 parser.add_argument('--dim', type=int, required=False, default=3, help="number of dimensions for the images")
 parser.add_argument('--n_classes', type=int, required=False, default=1, help="number of different classes to generate")
 parser.add_argument('--image_size', type=int, nargs='+', default=[250,300,300],

@@ -797,9 +797,18 @@ class MultiBoxLoss(nn.Module):
 
         self.smooth_l1 = nn.L1Loss()
         self.cross_entropy = nn.CrossEntropyLoss(reduction='none')
-        self.thresholding_mode = "soft" if type(self.threshold) == list else "hard"
-        if self.thresholding_mode == "soft":
-            assert (len(self.threshold) == 2)
+
+        if type(self.threshold) == list:
+            if len(self.threshold) == 1:
+                self.thresholding_mode = "hard"
+                self.threshold = self.threshold[0]
+            else:
+                self.thresholding_mode = "soft"
+                assert (len(self.threshold) == 2)
+        elif type(self.threshold) == float:
+            self.thresholding_mode = "hard"
+        else:
+            raise Exception("Type error. Expected float or list of floats for threshold but got {type(self.threshold))}")
 
     def forward(self, predicted_locs, predicted_scores, boxes, labels):
         """
@@ -935,7 +944,9 @@ class MultiBoxLoss(nn.Module):
         n_hard_negatives = self.neg_pos_ratio * n_positives  # (N)
 
         # First, find the loss for all priors
-        conf_loss_all = self.cross_entropy(predicted_scores.view(-1, n_classes), true_classes.view(-1))  # (N * xxx)
+        tc = torch.clone(true_classes.view(-1))
+        tc[tc == -1] = 0
+        conf_loss_all = self.cross_entropy(predicted_scores.view(-1, n_classes), tc.view(-1))  # (N * xxx)
         conf_loss_all = conf_loss_all.view(batch_size, n_priors)  # (N, xxx)
         conf_loss_all[true_classes < 0] = 0
 
