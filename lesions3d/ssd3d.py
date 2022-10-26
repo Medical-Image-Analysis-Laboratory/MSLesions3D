@@ -294,7 +294,6 @@ class LSSD3D(pl.LightningModule):
                  ASPECT_RATIOS=ASPECT_RATIOS,
                  SCALES=SCALES):
         super(LSSD3D, self).__init__()
-        print("Init LSSD3D")
 
         # self.save_hyperparameters(ignore=["timesteps"])
         self.save_hyperparameters()
@@ -516,6 +515,7 @@ class LSSD3D(pl.LightningModule):
         return all_images_boxes, all_images_labels, all_images_scores  # lists of length batch_size        
 
     def init(self):
+        print("[INFO] Initializing model weights")
         self.base.init()
         self.pred_convs.init()
 
@@ -637,7 +637,7 @@ class LSSD3D(pl.LightningModule):
             logs["metrics_10"] = metrics_10
             logs["metrics_50"] = metrics_50
 
-        return {'loss': loss, "log": logs}
+        return {'val_loss': loss, "log": logs}
 
     def validation_epoch_end(self, outputs):
         # Compute mean losses over all the epoch's batches
@@ -648,11 +648,10 @@ class LSSD3D(pl.LightningModule):
         # Log the learning rate to keep track of it
         self.log("hp_metric/lr", self.lr)
 
-        # print(f"Logging (validation epoch {self.current_epoch})")#, round(avg_loss.item(),3), round(avg_conf_loss.item(),3), round(avg_loc_loss.item(),3))
-
         # Log the different losses
         log_fn = self.log if self.use_wandb else self.logger.experiment.add_scalar
         kwargs = [] if self.use_wandb else [self.global_step]
+        log_fn('avg_val_loss', avg_loss, *kwargs)
         log_fn('total_loss/validation', avg_loss, *kwargs)
         log_fn('confidence_loss/validation', avg_conf_loss, *kwargs)
         log_fn('localization_loss/validation', avg_loc_loss, *kwargs)
@@ -686,14 +685,25 @@ class LSSD3D(pl.LightningModule):
 
 
         # Save the model using wandb if wandb is activated
-        if self.use_wandb:
-            dummy_input = torch.rand((1, self.input_channels, *self.input_size), device=self.device)
-            model_filename = "model_final.onnx"
-            log_dir = pjoin(wandb.config["logdir"], wandb.run.project, wandb.run.id)
-            if not pexists(log_dir):
-                os.makedirs(log_dir)
-            self.to_onnx(pjoin(log_dir,model_filename), dummy_input, export_params=True)
-            wandb.save(model_filename)
+        # if self.use_wandb:
+        #     dummy_input = torch.rand((1, self.input_channels, *self.input_size), device=self.device)
+        #     model_filename = "model_final.onnx"
+        #     log_dir = pjoin(wandb.config["logdir"], wandb.run.project, wandb.run.id)
+        #     if not pexists(log_dir):
+        #         os.makedirs(log_dir)
+        #     self.to_onnx(pjoin(log_dir,model_filename), dummy_input, export_params=True)
+        #     artifact = wandb.Artifact(name=pjoin(log_dir, "model.ckpt"), type="model")
+        #     artifact.add_file(model_filename)
+        #     wandb.log_artifact(artifact)
+        #     # wandb.save(pjoin(log_dir, model_filename))
+
+        log_dict = {
+            'total_loss/validation': avg_loss,
+            'confidence_loss/validation': avg_conf_loss,
+            'localization_loss/validation': avg_loc_loss,
+        }
+
+        return {"avg_val_loss": avg_loss, 'log': log_dict}
 
     def training_epoch_end(self, outputs):
         # Log the mAP every n epochs
@@ -728,7 +738,7 @@ class LSSD3D(pl.LightningModule):
             log_fn('f1_score/training_IoU_0.5',     avg_f1_score_50,    *kwargs)
 
             l1_norm = self.compute_parameters_median_size()
-            log_fn('hp_metric/parameter_sizes',     l1_norm,            *kwargs)
+            log_fn('hp-_metric/parameter_sizes',     l1_norm,            *kwargs)
 
     def predict_step(self, batch, batch_idx: int, dataloader_idx: int = None):
         predicted_locs, predicted_scores = self(batch["img"])
@@ -990,12 +1000,8 @@ if __name__ == '__main__':
     # x = torch.rand(3, 1, 300, 300, 300).to(device)
 
     model = LSSD3D(n_classes=2, input_channels=1, input_size=(64,64,64)).to(device)
-    # base = MobileNetBase(width_mult = 1., cube=True).to(device)
-    x = torch.rand(3, 1, 64, 64, 64).to(device)
-    gt_boxes = [torch.sort(torch.rand(1, 6), dim=1)[0].to(device) for i in range(3)]
-    gt_labels = [torch.LongTensor([1]).to(device) for i in range(3)]
-    # base(x)
-    criterion = MultiBoxLoss(model.priors_cxcycz)
-    criterion(*model(x), gt_boxes, gt_labels)
+    model.init()
+    dummy_input = torch.rand((1, model.input_channels, *model.input_size), device=model.device)
+    model.to_onnx('model.onnx', dummy_input, export_params=True)
 
-
+    model = LSSD3D.load_from_checkpoint('model.onnx').to(device)

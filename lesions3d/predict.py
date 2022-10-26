@@ -26,19 +26,17 @@ import argparse
 parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 parser.add_argument('-d', '--dataset_path', type=str, help="path to dataset used for training and validation",
                     default=r'../data/artificial_dataset')
-parser.add_argument('-dn', '--dataset_name', type=str, help="name of dataset to use",
-                    default=None)
-parser.add_argument('-m', '--model_path', type=str, help="path to model",
-                    default=r'model_final.onnx')
+parser.add_argument('-dn', '--dataset_name', type=str, help="name of dataset to use", default=None)
+parser.add_argument('-m', '--model_path', type=str, help="path to model", default=r'model_final.onnx')
 parser.add_argument('-p', '--percentage', type=float, help="percentage of the dataset to predict on", default=1.)
-parser.add_argument('-su', '--subject', type=str, default='0000',
-                    help="if prediction has to be done on 1 subject only, specify its id")
+parser.add_argument('-su', '--subject', type=str, default=None, help="if prediction has to be done on 1 subject only, specify its id")
 parser.add_argument('-c', '--n_classes', type=int, help="number of classes in dataset", default=1)
 parser.add_argument('-nw', '--num_workers', type=int, default=8, help="number of workers for the dataset")
 parser.add_argument('-ps', '--predict_subset', type=str, help="subset to predict on", choices=['train', 'validation', 'test'], default=r'train')
 parser.add_argument('-sc', '--min_score', type=float, help="minimum score for a candidate box to be considered as positive in the visualisation", default=0.5) #0.5
 parser.add_argument('-k', '--top_k', type=int, help="if there are a lot of resulting detection across all classes, keep only the top 'k'", default=100) #100
 parser.add_argument('-o', '--output_dir', type=str, help="path to output", default=r"../data/predictions/")
+parser.add_argument('-si', '--save_images', type=bool, help="whether to save the predictions as nii.gz images or not", default=True)
 args = parser.parse_args()
 
 
@@ -82,8 +80,7 @@ def predict_all(dataset, model, predict_subset="test", min_score=0.5, max_overla
     return det_locs, det_labels, det_scores
 
 
-def compute_subjects_mAP(model, loader = None, dataset=None, subject_id = None, output_dir=r"./predictions",
-                         min_iou=0.5):
+def compute_subjects_mAP(model, loader = None, dataset=None, subject_id = None, output_dir=r"./predictions", min_iou=0.5):
     # Expects Loader to have batch size = 1
 
     assert loader or (subject_id and dataset)
@@ -118,16 +115,14 @@ def compute_subjects_mAP(model, loader = None, dataset=None, subject_id = None, 
 
     if subject_id:
         for s in dataset.predict_test_dataset.data:
-            if s["subject"] != subject_id:
-                pass
+            if s["subject"] != subject_id: pass
             subject = s
             break
         return compute_subjects_metrics(subject)
 
     else:
         all_metrics = {}
-        for subject in loader:
-            all_metrics[subject["subject"][0]] = compute_subjects_metrics(subject, multiple=True)
+        for subject in loader: all_metrics[subject["subject"][0]] = compute_subjects_metrics(subject, multiple=True)
 
         with open(pjoin(output_dir, f"aa_metrics.json"), "w") as json_file:
             json.dump(all_metrics, json_file)
@@ -215,35 +210,29 @@ def save_predictions_example(loader, det_locs, det_labels, det_scores, min_score
                 json.dump(all_infos, json_file)
 
 
-def predict_example(output_dir, subject=None, percentage=1., predict_subset="train", save_images=True, min_score=0.5,
-                    top_k=100):
+def predict_example(model_path, output_dir, dataset_path, dataset_name, n_classes=1, subject=None, percentage=1.,
+                    predict_subset="train", min_score=0.5, top_k=100, num_workers=8, save_images=True):
     pl.seed_everything(970205)
 
-    path = args.model_path
+    path = model_path
+    output_dir = pjoin(output_dir, "multiple_objects")
+    output_dir = pjoin(output_dir, "one_class") if n_classes == 1 else pjoin(output_dir, "double_class")
+    output_dir = output_dir if dataset_name is None else pjoin(output_dir, dataset_name)
+    if not pexists(output_dir): os.makedirs(output_dir)
 
-    # dataset = ExampleDataset(n_classes=args.n_classes, percentage=percentage, subject=subject,
-    #                          cache=False, num_workers=args.num_workers, objects="multiple", batch_size=1)
-    dataset = ExampleDataset(n_classes=args.n_classes, subject=args.subject, percentage=args.percentage,
-                             cache=False, num_workers=args.num_workers, objects="multiple",
-                             batch_size=1, data_dir=args.dataset_path, dataset_name=args.dataset_name)
+    dataset = ExampleDataset(n_classes=n_classes, subject=subject, percentage=percentage,
+                             cache=False, num_workers=num_workers, objects="multiple",
+                             batch_size=1, data_dir=dataset_path, dataset_name=dataset_name)
     dataset.setup(stage="predict")
     if predict_subset == "train":
         loader = dataset.predict_train_dataloader()
     else:
         loader = dataset.predict_test_dataloader()
 
-    # model = LSSD3D.load_from_checkpoint(path, min_score=0.1).to(device)
-
-    model = LSSD3D(n_classes=args.n_classes + 1, input_channels=1, lr=0.0005, width_mult=0.4,
-                   scheduler=None, batch_size=1, comments="", input_size=(64,64,64),
-                   compute_metric_every_n_epochs=5, use_wandb=False, ASPECT_RATIOS={3:[1.], 5:[1.], 7:[1.]},
-                   SCALES={1:0.05,3:0.1,5:.15,7:.2}, min_score=min_score, top_k=top_k)
-    model.init()
+    model = LSSD3D.load_from_checkpoint(path, min_score=0.1).to(device)
 
     model.top_k = top_k
     model.min_score = min_score
-
-    if not pexists(output_dir): os.makedirs(output_dir)
 
     predictor = pl.Trainer(accelerator="gpu", devices=1, enable_progress_bar=True)
     predictions_all_batches = predictor.predict(model, dataloaders=loader)
@@ -258,7 +247,7 @@ def predict_example(output_dir, subject=None, percentage=1., predict_subset="tra
         det_labels.append(labels[0])
         det_scores.append(scores[0])
 
-    if output_dir is not None:
+    if save_images and output_dir is not None:
         save_predictions_example(loader, det_locs, det_labels, det_scores, min_score, output_dir, save_images)
 
     print("AP for IoU = 0.5\n", compute_subjects_mAP(model, loader=loader, dataset=None, subject_id=None, output_dir=output_dir, min_iou=0.5))
@@ -292,8 +281,10 @@ def save_predictions(dataset, loader, det_locs, det_labels, det_scores, path_to_
 
 if __name__ == "__main__":
     pass
-    predict_example(args.output_dir, percentage=args.percentage, predict_subset=args.predict_subset,
-                    subject=args.subject, save_images=True, min_score=args.min_score, top_k=args.top_k)
-
+    predict_example(model_path=args.model_path, output_dir=args.output_dir, dataset_path=args.dataset_path,
+                    dataset_name=args.dataset_name, n_classes=args.n_classes, subject=args.subject,
+                    percentage=args.percentage, predict_subset=args.predict_subset,
+                    min_score=args.min_score, top_k=args.top_k, num_workers=args.num_workers,
+                    save_images=args.save_images)
 
 

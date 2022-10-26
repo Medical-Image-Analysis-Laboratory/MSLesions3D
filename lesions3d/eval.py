@@ -12,7 +12,24 @@ from os.path import join as pjoin
 import torch
 from utils import calculate_mAP
 from tqdm import tqdm
-
+import argparse
+#
+parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+parser.add_argument('-d', '--dataset_path', type=str, help="path to dataset used for training and validation",
+                    default=r'../data/artificial_dataset')
+parser.add_argument('-dn', '--dataset_name', type=str, help="name of dataset to use", default=None)
+# parser.add_argument('-m', '--model_path', type=str, help="path to model",
+#                     default=r'model_final.onnx')
+parser.add_argument('-p', '--percentage', type=float, help="percentage of the dataset to predict on", default=1.)
+# parser.add_argument('-su', '--subject', type=str, default=None,
+#                     help="if prediction has to be done on 1 subject only, specify its id")
+# parser.add_argument('-c', '--n_classes', type=int, help="number of classes in dataset", default=1)
+# parser.add_argument('-nw', '--num_workers', type=int, default=8, help="number of workers for the dataset")
+# parser.add_argument('-ps', '--predict_subset', type=str, help="subset to predict on", choices=['train', 'validation', 'test'], default=r'train')
+# parser.add_argument('-sc', '--min_score', type=float, help="minimum score for a candidate box to be considered as positive in the visualisation", default=0.5) #0.5
+# parser.add_argument('-k', '--top_k', type=int, help="if there are a lot of resulting detection across all classes, keep only the top 'k'", default=100) #100
+# parser.add_argument('-o', '--output_dir', type=str, help="path to output", default=r"../data/predictions/")
+args = parser.parse_args()
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -51,7 +68,7 @@ def evaluate(path_to_preds ,predict_subset="train", n_classes=1, percentage=1.,c
         mAP: mean average precision for the dataset
 
     """
-    dataset = ExampleDataset(n_classes=n_classes, percentage=percentage, cache=False)
+    dataset = ExampleDataset(n_classes=n_classes, percentage=args.percentage,)
     dataset.batch_size = 32
     dataset.setup(stage="predict")
     loader = dataset.predict_train_dataloader() if predict_subset == "train" \
@@ -109,7 +126,7 @@ def evaluate(path_to_preds ,predict_subset="train", n_classes=1, percentage=1.,c
 
 
 if __name__ == "__main__":
-    path_to_preds = r"C:\Users\Cristina\Desktop\MSLesions3D\data\example\multiple_objects\one_class\predictions\version_22"
+    path_to_preds = r"/home/wynen/PycharmProjects/MSLesions3D/data/predictions"
 
     for ct in [0.1,0.2,0.3,0.4,0.5,]:
         print(f"Confidence threshold set to {ct}")

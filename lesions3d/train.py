@@ -21,7 +21,6 @@ from os.path import exists as pexists
 from pytorch_lightning.callbacks import EarlyStopping
 os.environ["CUDA_LAUNCH_BLOCKING"] = "1"
 
-
 torch.multiprocessing.set_sharing_strategy('file_system')
 
 parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
@@ -43,23 +42,26 @@ parser.add_argument('--alpha', type=int, default=1.,
                     help="alpha parameter for the multibox loss (= confidence loss + alpha * localization loss)")
 parser.add_argument('-a', '--augmentations', type=str, nargs='*', default=["flip", "rotate90d", "affine"])
 parser.add_argument('-ld', '--logdir', type=str, default=r'../logs/artificial_dataset')
-parser.add_argument('-c', '--cache', type=bool, default=False, help="whether to cache the dataset or not")
+parser.add_argument('-c', '--cache', type=int, default=0, help="whether to cache the dataset or not")
 parser.add_argument('-nw', '--num_workers', type=int, default=8, help="number of workers for the dataset")
 parser.add_argument('-wm', '--width_mult', type=float, default=0.4, help="width multiplicator (MobileNet)")
 parser.add_argument('-en', '--experiment_name', type=str, default="multiple_subjects_64",
                     help="experiment name for tensorboard logdir")
-parser.add_argument('-wb', '--use_wandb', type=bool, default=True,
-                    help="whether to use weights and biases as logging tool")
+parser.add_argument('-wb', '--use_wandb', type=int, default=1, help="whether to use weights and biases as logging tool")
 parser.add_argument('-me', '--max_epochs', type=int, default=None, help="maximum number of epochs")
 parser.add_argument('-mi', '--max_iterations', type=int, default=4000, help="maximum number of iterations")
 parser.add_argument('-cp', '--checkpoint', type=str, default=None, help="path to model to load if resuming training")
 parser.add_argument('-v', '--verbose', type=int, default=0, help="dataset verbose")
 parser.add_argument('-rs', '--seed', type=int, default=970205, help="random seed")
-parser.add_argument('-es', '--early_stopping', type=bool, default=True, help="whether to use early stopping or not")
+parser.add_argument('-es', '--early_stopping', type=int, default=1, help="whether to use early stopping or not")
 parser.add_argument('-cm', '--compute_metric_every_n_epochs', type=int, default=1, help="compute the metric every n epochs")
 
 # Get the hyperparameters
 args = parser.parse_args()
+try:
+    wandb.finish()
+except:
+    print("WandB Not running. Initializing!")
 # Pass them to wandb.init
 wandb.init(config=args)
 # Access all hyperparameter values through wandb.config
@@ -132,8 +134,7 @@ def example():
 
     ASPECT_RATIOS = ARS
     SCALES = SC
-    comments = f"""   
-    """
+    comments = f""""""
 
     dataset = ExampleDataset(n_classes=args.n_classes, subject=args.subject, percentage=args.percentage,
                              cache=args.cache, num_workers=args.num_workers, objects="multiple", verbose=bool(args.verbose),
@@ -148,7 +149,6 @@ def example():
                    SCALES=SCALES, alpha=args.alpha, threshold=args.threshold)
     model.init()
 
-
     train_loader = dataset.train_dataloader()
     test_loader = dataset.test_dataloader()
 
@@ -156,12 +156,24 @@ def example():
     if not pexists(pjoin(logdir, args.experiment_name)):
         os.makedirs(pjoin(logdir, args.experiment_name))
     tb_logger = TensorBoardLogger(logdir, name=args.experiment_name, default_hp_metric=False)
-    wandb_logger = WandbLogger(save_dir=args.logdir, project="WhiteBoxes64")
+    wandb_logger = WandbLogger(save_dir=args.logdir, project="MSLesions3D-lesions3d")
     logger = wandb_logger if args.use_wandb else tb_logger
+    checkpoint_callback = pl.callbacks.ModelCheckpoint(
+        monitor="avg_val_loss",  # TODO: select the logged metric to monitor the checkpoint saving
+        filename="checkpoint-{epoch:03d}-{avg_val_loss:.4f}",
+        save_top_k=3,
+        mode="min",
+    )
+    callbacks = [checkpoint_callback]
+    if args.early_stopping:
+        print("Early stopping strategy")
+        callbacks += [EarlyStopping('total_loss/validation', patience=5)]
+
     trainer = pl.Trainer(accelerator="gpu", devices=1, max_epochs=args.max_epochs, max_steps=args.max_iterations,
                          logger=logger, enable_progress_bar=True, log_every_n_steps=1,
-                         callbacks=[EarlyStopping('total_loss/validation')],
-                         resume_from_checkpoint=args.checkpoint)
+                         callbacks=callbacks,
+                         resume_from_checkpoint=args.checkpoint,
+                         enable_checkpointing=True)
 
     trainer.fit(model=model, train_dataloaders=train_loader, val_dataloaders=test_loader)
 
