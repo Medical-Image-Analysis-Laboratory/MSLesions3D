@@ -84,7 +84,7 @@ def evaluate(path_to_preds ,predict_subset="train", n_classes=1, percentage=1.,c
         for i, batch in enumerate(loader):
             try:
                 # Retrieve predictions from the specified path (requires to run predict.py beforehand)
-                batch_preds = [retrieve_boxes(path_to_preds, subj,confidence_threshold=confidence_threshold) for subj in batch["subject"]]
+                batch_preds = [retrieve_boxes(path_to_preds, subj, confidence_threshold=confidence_threshold) for subj in batch["subject"]]
             except FileNotFoundError:
                 continue
             boxes, labels = batch["seg"] #ground truth

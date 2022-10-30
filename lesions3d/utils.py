@@ -150,7 +150,8 @@ def find_jaccard_overlap3d(set_1, set_2):
 
 
 def volume(box):
-    return (box[3] - box[0]) * (box[4] - box[1]) * (box[5] - box[2])
+    vol = (box[3] - box[0]) * (box[4] - box[1]) * (box[5] - box[2])
+    return vol
 
 
 def compute_metrics_per_class(det_class_images, det_class_boxes, det_class_scores,
@@ -180,7 +181,6 @@ def compute_metrics_per_class(det_class_images, det_class_boxes, det_class_score
     # Keep track of which true objects with this class have already been 'detected'
     # So far, none
     true_class_boxes_detected = torch.zeros((true_class_difficulties.size(0)), dtype=torch.uint8).to(device)  # (n_class_objects)
-    true_class_boxes_volumes = torch.zeros((true_class_difficulties.size(0)), dtype=torch.uint8).to(device)
 
     n_class_detections = det_class_boxes.size(0)
 
@@ -221,21 +221,28 @@ def compute_metrics_per_class(det_class_images, det_class_boxes, det_class_score
                 if true_class_boxes_detected[original_ind] == 0:
                     true_positives[d] = 1
                     true_class_boxes_detected[original_ind] = 1  # this object has now been detected/accounted for
-                    true_class_boxes_volumes[original_ind] = volume(true_class_boxes[original_ind])
                 # Otherwise, it's a false positive (since this object is already accounted for)
                 else:
                     false_positives[d] = 1
         # Otherwise, the detection occurs in a different location than the actual object, and is a false positive
         else:
             false_positives[d] = 1
+    class_boxes_volumes = torch.FloatTensor([volume(b) for i, b in enumerate(true_class_boxes) if not true_class_difficulties[i]]).to(device)
+    # try:
+    class_found_boxes_volumes = class_boxes_volumes[true_class_boxes_detected == 1]
+    class_not_found_boxes_volumes = class_boxes_volumes[true_class_boxes_detected == 0]
+    # except IndexError as e:
+    #     print(class_boxes_volumes)
+    #     print(true_class_boxes_detected.shape)
+    #     raise Exception("Debugging")
 
-    return true_positives, false_positives, true_class_boxes_detected, true_class_boxes_volumes, det_class_scores
+    return true_positives, false_positives, true_class_boxes_detected, det_class_scores, class_found_boxes_volumes, class_not_found_boxes_volumes
 
 
 def calculate_mAP(det_boxes, det_labels, det_scores, true_boxes, true_labels, true_difficulties, min_overlap=0.5,
                   return_detail=False):
     """
-    Calculate the Mean Average Precision (mAP) of detected objects.
+    Calculate the Mean Average Precision (mAP) of detected objects. TODO
     
     See https://medium.com/@jonathan_hui/map-mean-average-precision-for-object-detection-45c121a31173 for an explanation
 
@@ -245,7 +252,7 @@ def calculate_mAP(det_boxes, det_labels, det_scores, true_boxes, true_labels, tr
     :param true_boxes: list of tensors, one tensor for each image containing actual objects' bounding boxes
     :param true_labels: list of tensors, one tensor for each image containing actual objects' labels
     :param true_difficulties: list of tensors, one tensor for each image containing actual objects' difficulty (0 or 1)
-    :return: list of average precisions for all classes, mean average precision (mAP)
+    :return: TODO
     """
     assert len(det_boxes) == len(det_labels) == len(det_scores) == len(true_boxes) == len(true_labels) == len(
         true_difficulties)
@@ -279,11 +286,13 @@ def calculate_mAP(det_boxes, det_labels, det_scores, true_boxes, true_labels, tr
     true_positives_per_class = {}
     false_positives_per_class = {}
     true_boxes_detected_per_class = {}
-    true_boxes_volumes_per_class = {}
+    found_boxes_volumes_per_class = {}
+    not_found_boxes_volumes_per_class = {}
     sorted_scores_per_class = {}
     recalls_per_class = {}
     precisions_per_class = {}
     f1_scores_per_class = {}
+    n_easy_class_objects = 0
     for c in range(1, n_classes):
         # Extract only objects with this class
         true_class_images = true_images[true_labels == c]  # (n_class_objects)
@@ -301,13 +310,14 @@ def calculate_mAP(det_boxes, det_labels, det_scores, true_boxes, true_labels, tr
 
         metrics = compute_metrics_per_class(det_class_images, det_class_boxes, det_class_scores,
                                             true_class_images, true_class_boxes, true_class_difficulties, min_overlap)
-        class_true_positives, class_false_positives, true_class_boxes_detected, true_class_boxes_volumes,\
-            det_class_scores_sorted = metrics
+        class_true_positives, class_false_positives, true_class_boxes_detected, det_class_scores_sorted,\
+            class_found_boxes_volumes, class_not_found_boxes_volumes = metrics
 
         true_positives_per_class[c] = class_true_positives
         false_positives_per_class[c] = class_false_positives
         true_boxes_detected_per_class[c] = true_class_boxes_detected
-        true_boxes_volumes_per_class[c] = true_class_boxes_volumes
+        found_boxes_volumes_per_class[c] = class_found_boxes_volumes
+        not_found_boxes_volumes_per_class[c] = class_not_found_boxes_volumes
         sorted_scores_per_class[c] = det_class_scores_sorted
 
         class_false_negatives = 1 - true_class_boxes_detected
@@ -353,7 +363,8 @@ def calculate_mAP(det_boxes, det_labels, det_scores, true_boxes, true_labels, tr
             f1_scores_per_class = f1_scores_per_class[1]
             average_precisions = average_precisions[list(average_precisions.keys())[0]]
             true_boxes_detected_per_class = true_boxes_detected_per_class[1]
-            true_boxes_volumes_per_class = true_boxes_volumes_per_class[1]
+            found_boxes_volumes_per_class = found_boxes_volumes_per_class[1]
+            not_found_boxes_volumes_per_class = not_found_boxes_volumes_per_class[1]
             true_positives_per_class = true_positives_per_class[1]
             false_positives_per_class = false_positives_per_class[1]
         except KeyError: # no detected objects
@@ -361,25 +372,28 @@ def calculate_mAP(det_boxes, det_labels, det_scores, true_boxes, true_labels, tr
             precisions_per_class = 0.
             f1_scores_per_class = 0.
             average_precisions = 0.
-            true_boxes_detected_per_class = torch.zeros((n_easy_class_objects), dtype=torch.uint8).to(device) # TODO (flemme)
-            true_boxes_volumes_per_class = torch.zeros((n_easy_class_objects), dtype=torch.uint8).to(device)
-            true_positives_per_class = torch.zeros((n_easy_class_objects), dtype=torch.uint8).to(device)
-            false_positives_per_class = torch.zeros((n_easy_class_objects), dtype=torch.uint8).to(device)
-
+            true_boxes_detected_per_class = torch.zeros(n_easy_class_objects, dtype=torch.uint8).to(device)
+            true_positives_per_class = torch.Tensor([]).to(device)
+            false_positives_per_class = torch.Tensor([]).to(device)
+            found_boxes_volumes_per_class = torch.Tensor([]).to(device)
+            true_boxes_volumes = torch.FloatTensor([volume(b) for b in true_boxes]).to(device)
+            not_found_boxes_volumes_per_class = true_boxes_volumes
 
     if not return_detail:
         return average_precisions, mean_average_precision
     else:
-        return {"APs":                  average_precisions,
-                "mAP":                  mean_average_precision,
-                "precision":            precisions_per_class,
-                "recall":               recalls_per_class,
-                "f1_score" :            f1_scores_per_class,
-                "sorted_det_scores" :   sorted_scores_per_class,
-                "TP" :                  true_positives_per_class,
-                "FP" :                  false_positives_per_class,
-                "n_true_boxes":         true_boxes_detected_per_class.size(0),
-                "volumes" :             true_boxes_volumes_per_class}
+        return {"APs":                                  average_precisions,
+                "mAP":                                  mean_average_precision,
+                "precision":                            precisions_per_class,
+                "recall":                               recalls_per_class,
+                "f1_score" :                            f1_scores_per_class,
+                "sorted_det_scores" :                   sorted_scores_per_class,
+                "TP" :                                  true_positives_per_class,
+                "FP" :                                  false_positives_per_class,
+                "n_true_boxes":                         true_boxes_detected_per_class.size(0),
+                "found_boxes_volumes_per_class":        found_boxes_volumes_per_class,
+                "not_found_boxes_volumes_per_class":    not_found_boxes_volumes_per_class,
+                }
 
 class BoundingBoxesGeneratord(MapTransform, InvertibleTransform):
     def __init__(self,

@@ -22,21 +22,25 @@ from utils import make_segmentation_from_bboxes
 from monai.data import decollate_batch
 from monai.transforms import SaveImaged
 import argparse
+from pprint import pprint
+import shutil
+from pathlib import Path
 
 parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 parser.add_argument('-d', '--dataset_path', type=str, help="path to dataset used for training and validation",
                     default=r'../data/artificial_dataset')
 parser.add_argument('-dn', '--dataset_name', type=str, help="name of dataset to use", default=None)
 parser.add_argument('-m', '--model_path', type=str, help="path to model", default=r'model_final.onnx')
+parser.add_argument('-mn', '--model_name', type=str, help="wandb model name", default=None)
 parser.add_argument('-p', '--percentage', type=float, help="percentage of the dataset to predict on", default=1.)
 parser.add_argument('-su', '--subject', type=str, default=None, help="if prediction has to be done on 1 subject only, specify its id")
 parser.add_argument('-c', '--n_classes', type=int, help="number of classes in dataset", default=1)
 parser.add_argument('-nw', '--num_workers', type=int, default=8, help="number of workers for the dataset")
-parser.add_argument('-ps', '--predict_subset', type=str, help="subset to predict on", choices=['train', 'validation', 'test'], default=r'train')
+parser.add_argument('-ps', '--predict_subset', type=str, help="subset to predict on", choices=['train', 'validation', 'test', 'all'], default=r'train')
 parser.add_argument('-sc', '--min_score', type=float, help="minimum score for a candidate box to be considered as positive in the visualisation", default=0.5) #0.5
 parser.add_argument('-k', '--top_k', type=int, help="if there are a lot of resulting detection across all classes, keep only the top 'k'", default=100) #100
 parser.add_argument('-o', '--output_dir', type=str, help="path to output", default=r"../data/predictions/")
-parser.add_argument('-si', '--save_images', type=bool, help="whether to save the predictions as nii.gz images or not", default=True)
+parser.add_argument('-si', '--save_images', type=int, help="whether to save the predictions as nii.gz images or not", default=1)
 args = parser.parse_args()
 
 
@@ -86,6 +90,12 @@ def compute_subjects_mAP(model, loader = None, dataset=None, subject_id = None, 
     assert loader or (subject_id and dataset)
 
     def compute_subjects_metrics(subject, multiple=False):
+        def convert_tensor(tensor):
+            try:
+                return tensor.cpu().detach().item()
+            except ValueError:
+                return tensor.cpu().detach().tolist()
+
         images, [gt_boxes, gt_labels] = subject["img"], subject['seg']
 
         images = images.to(device)
@@ -105,13 +115,25 @@ def compute_subjects_mAP(model, loader = None, dataset=None, subject_id = None, 
             compute_mAP = [1 if len(predicted_locs_img) > 500 else 0 for predicted_locs_img in predicted_locs]
             compute_mAP = sum(compute_mAP)
             if compute_mAP != 0:
-                APs, mAP = calculate_mAP(det_boxes, det_labels, det_scores, gt_boxes, gt_labels, gt_difficulties, min_overlap=min_iou)
-                mAP = torch.FloatTensor([mAP])
+                # APs, mAP = calculate_mAP(det_boxes, det_labels, det_scores, gt_boxes, gt_labels, gt_difficulties, min_overlap=min_iou)
+                # mAP = torch.FloatTensor([mAP])
+                out = calculate_mAP(det_boxes, det_labels, det_scores, gt_boxes, gt_labels, gt_difficulties, min_overlap=min_iou, return_detail=True)
+                # pprint(out)
+                metrics = {}
+                for key, value in out.items():
+                    if type(value) in (float, int):
+                        metrics[key] = value
+                    elif type(value) == dict:
+                        metrics[key] = {k: convert_tensor(v) for k,v in value.items()}
+                    else:
+                        metrics[key] = convert_tensor(value)
             else:
                 mAP = torch.FloatTensor([-10])
                 print("Couldn't compute mAP for subject {subject['subject']}")
 
-        return APs, float(mAP.cpu())
+        # return APs, float(mAP.cpu())
+        # pprint(metrics)
+        return metrics
 
     if subject_id:
         for s in dataset.predict_test_dataset.data:
@@ -124,8 +146,8 @@ def compute_subjects_mAP(model, loader = None, dataset=None, subject_id = None, 
         all_metrics = {}
         for subject in loader: all_metrics[subject["subject"][0]] = compute_subjects_metrics(subject, multiple=True)
 
-        with open(pjoin(output_dir, f"aa_metrics.json"), "w") as json_file:
-            json.dump(all_metrics, json_file)
+        with open(pjoin(output_dir, f"aa_metrics_per_subject_(min_IoU={min_iou}).json"), "w") as json_file:
+            json.dump(all_metrics, json_file, indent=4)
 
         return all_metrics
 
@@ -211,13 +233,16 @@ def save_predictions_example(loader, det_locs, det_labels, det_scores, min_score
 
 
 def predict_example(model_path, output_dir, dataset_path, dataset_name, n_classes=1, subject=None, percentage=1.,
-                    predict_subset="train", min_score=0.5, top_k=100, num_workers=8, save_images=True):
+                    predict_subset="train", min_score=0.5, top_k=10, num_workers=8, save_images=True, model_name=None):
     pl.seed_everything(970205)
 
     path = model_path
-    output_dir = pjoin(output_dir, "multiple_objects")
-    output_dir = pjoin(output_dir, "one_class") if n_classes == 1 else pjoin(output_dir, "double_class")
     output_dir = output_dir if dataset_name is None else pjoin(output_dir, dataset_name)
+    output_dir = output_dir if model_name is None else pjoin(output_dir, model_name)
+    if not pexists(output_dir): os.makedirs(output_dir)
+    shutil.copy(model_path, pjoin(output_dir, Path(model_path).name))
+    output_dir = pjoin(output_dir, f"{predict_subset}_set")
+    output_dir = pjoin(output_dir, f"min_score_{min_score}")
     if not pexists(output_dir): os.makedirs(output_dir)
 
     dataset = ExampleDataset(n_classes=n_classes, subject=subject, percentage=percentage,
@@ -229,7 +254,7 @@ def predict_example(model_path, output_dir, dataset_path, dataset_name, n_classe
     else:
         loader = dataset.predict_test_dataloader()
 
-    model = LSSD3D.load_from_checkpoint(path, min_score=0.1).to(device)
+    model = LSSD3D.load_from_checkpoint(path, min_score=min_score).to(device)
 
     model.top_k = top_k
     model.min_score = min_score
@@ -250,8 +275,10 @@ def predict_example(model_path, output_dir, dataset_path, dataset_name, n_classe
     if save_images and output_dir is not None:
         save_predictions_example(loader, det_locs, det_labels, det_scores, min_score, output_dir, save_images)
 
-    print("AP for IoU = 0.5\n", compute_subjects_mAP(model, loader=loader, dataset=None, subject_id=None, output_dir=output_dir, min_iou=0.5))
-    print("AP for IoU = 0.1\n", compute_subjects_mAP(model, loader=loader, dataset=None, subject_id=None, output_dir=output_dir, min_iou=0.1))
+    print(f"\n\n_________________________AP for IoU = 0.5 / min score = {min_score}_________________________\n")
+    pprint(compute_subjects_mAP(model, loader=loader, dataset=None, subject_id=None, output_dir=output_dir, min_iou=0.5))
+    print(f"\n\n_________________________AP for IoU = 0.1 / min score = {min_score}_________________________\n")
+    pprint(compute_subjects_mAP(model, loader=loader, dataset=None, subject_id=None, output_dir=output_dir, min_iou=0.1))
 
 
 def save_predictions(dataset, loader, det_locs, det_labels, det_scores, path_to_dir):
@@ -281,10 +308,18 @@ def save_predictions(dataset, loader, det_locs, det_labels, det_scores, path_to_
 
 if __name__ == "__main__":
     pass
-    predict_example(model_path=args.model_path, output_dir=args.output_dir, dataset_path=args.dataset_path,
-                    dataset_name=args.dataset_name, n_classes=args.n_classes, subject=args.subject,
-                    percentage=args.percentage, predict_subset=args.predict_subset,
-                    min_score=args.min_score, top_k=args.top_k, num_workers=args.num_workers,
-                    save_images=args.save_images)
+    if args.predict_subset == 'all':
+        for psubset in ["train", "validation", "test"]:
+            predict_example(model_path=args.model_path, output_dir=args.output_dir, dataset_path=args.dataset_path,
+                            dataset_name=args.dataset_name, n_classes=args.n_classes, subject=args.subject,
+                            percentage=args.percentage, predict_subset=psubset,
+                            min_score=args.min_score, top_k=args.top_k, num_workers=args.num_workers,
+                            save_images=args.save_images, model_name=args.model_name)
+    else:
+        predict_example(model_path=args.model_path, output_dir=args.output_dir, dataset_path=args.dataset_path,
+                        dataset_name=args.dataset_name, n_classes=args.n_classes, subject=args.subject,
+                        percentage=args.percentage, predict_subset=args.predict_subset,
+                        min_score=args.min_score, top_k=args.top_k, num_workers=args.num_workers,
+                        save_images=args.save_images, model_name=args.model_name)
 
 
