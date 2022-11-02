@@ -10,6 +10,18 @@ import warnings
 warnings.filterwarnings(action="ignore", message=".*Converting a tensor to a Python boolean.*")
 warnings.filterwarnings(action="ignore", message=".*sourceTensor.clone().detach().*")
 
+config_mobilenet = [32,
+                  # channel, n, stride
+                  [64, 1, (2, 2, 2)],
+                  [128, 2, (2, 2, 2)],
+                  [256, 2, (2, 2, 2)],
+                  [512, 6, (2, 2, 2)],
+                  [1024, 2, (1, 1, 1)],
+                  ]
+
+MOBILENET_CONFIGS = {
+    "mobilenet": config_mobilenet
+}
 
 def conv_bn(inp, oup, stride):
     return nn.Sequential(

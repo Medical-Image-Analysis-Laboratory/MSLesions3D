@@ -35,16 +35,20 @@ parser.add_argument('-b', '--batch_size', type=int, default=8, help="training ba
 parser.add_argument('-lr', '--learning_rate', type=float, default=0.001, help="training learning rate")
 parser.add_argument('-sr', '--scheduler', type=str, default="CosineAnnealingLR", help="learning rate scheduler")
 parser.add_argument('-th', '--threshold', type=float, default=[0.1,0.2], nargs='+', help="training IoU threshold for box matching (cf Amemiya 2021)")
-parser.add_argument('-l', '--layers', type=str, default="3 5 7", help="layers to include in the network")
-parser.add_argument('-sc', '--scales', type=json.loads, default="{\"1\": 0.05, \"3\": 0.1, \"5\": 0.15, \"7\": 0.2}",
-                    help="layers to include in the network")
+parser.add_argument('-pl', '--prediction_layers', type=str, default="3 5 7", help="feature maps on which to do the prediction convolutions.")
+parser.add_argument('-cfg', '--base_network_config', type=str, default="mobilenet", help="base network configuration")
+parser.add_argument('-sc', '--scales', type=json.loads, default="{}", help="Object scales per layer")
+parser.add_argument('-minos', '--min_object_size', type=int, default=6,
+                    help="Minimum size for an object (for computation of scales). Not taken into account if scales argument is set.")
+parser.add_argument('-maxos', '--max_object_size', type=int, default=14,
+                    help="Minimum size for an object (for computation of scales). Not taken into account if scales argument is set.")
 parser.add_argument('--alpha', type=int, default=1.,
                     help="alpha parameter for the multibox loss (= confidence loss + alpha * localization loss)")
 parser.add_argument('-a', '--augmentations', type=str, nargs='*', default=["flip", "rotate90d", "affine"])
 parser.add_argument('-ld', '--logdir', type=str, default=r'../logs/artificial_dataset')
 parser.add_argument('-c', '--cache', type=int, default=0, help="whether to cache the dataset or not")
 parser.add_argument('-nw', '--num_workers', type=int, default=8, help="number of workers for the dataset")
-parser.add_argument('-wm', '--width_mult', type=float, default=0.4, help="width multiplicator (MobileNet)")
+parser.add_argument('-wm', '--width_mult', type=float, default=1., help="width multiplicator (MobileNet)")
 parser.add_argument('-en', '--experiment_name', type=str, default="multiple_subjects_64",
                     help="experiment name for tensorboard logdir")
 parser.add_argument('-wb', '--use_wandb', type=int, default=1, help="whether to use weights and biases as logging tool")
@@ -55,6 +59,8 @@ parser.add_argument('-v', '--verbose', type=int, default=0, help="dataset verbos
 parser.add_argument('-rs', '--seed', type=int, default=970205, help="random seed")
 parser.add_argument('-es', '--early_stopping', type=int, default=1, help="whether to use early stopping or not")
 parser.add_argument('-cm', '--compute_metric_every_n_epochs', type=int, default=1, help="compute the metric every n epochs")
+parser.add_argument('-coms', '--comments', type=str, default="", help="optional comments on the present run")
+
 
 # Get the hyperparameters
 args = parser.parse_args()
@@ -68,17 +74,17 @@ wandb.init(config=args)
 args = wandb.config
 
 try:
-    layers = [int(x) for x in args.layers.split()]
+    layers = [int(x) for x in args.prediction_layers.split()]
 except ValueError:
     print("Layers argument must be a sequence of integers separated by a space ' '")
     print("Run this script help to know more (--help)")
     exit()
 
-ARS = {l: [1.] for l in layers}
-SC = {int(k): v for k, v in args.scales.items()}
+aspect_ratios = {l: [1.] for l in layers}
+scales = {int(k): v for k, v in args.scales.items()}
 print(args)
-print("Aspect ratios: ", ARS)
-print("Scales: ", SC)
+print("Aspect ratios: ", aspect_ratios)
+print("Scales: ", scales)
 if args.max_epochs:
     args.update({'max_iterations':-1}, allow_val_change=True)
 
@@ -132,10 +138,6 @@ def example():
 
     augmentations = [(n, i) for n, i in augmentations if n in args.augmentations]
 
-    ASPECT_RATIOS = ARS
-    SCALES = SC
-    comments = f""""""
-
     dataset = ExampleDataset(n_classes=args.n_classes, subject=args.subject, percentage=args.percentage,
                              cache=args.cache, num_workers=args.num_workers, objects="multiple", verbose=bool(args.verbose),
                              batch_size=args.batch_size, augmentations=augmentations, data_dir=args.dataset_path,
@@ -144,9 +146,10 @@ def example():
     input_size = tuple(dataset.train_dataset[0]["img"].shape)[1:]
 
     model = LSSD3D(n_classes=args.n_classes + 1, input_channels=1, lr=args.learning_rate, width_mult=args.width_mult,
-                   scheduler=args.scheduler, batch_size=args.batch_size, comments=comments, input_size=input_size,
-                   compute_metric_every_n_epochs=5, use_wandb=args.use_wandb, ASPECT_RATIOS=ASPECT_RATIOS,
-                   SCALES=SCALES, alpha=args.alpha, threshold=args.threshold)
+                   scheduler=args.scheduler, batch_size=args.batch_size, comments=args.comments, input_size=input_size,
+                   compute_metric_every_n_epochs=5, use_wandb=args.use_wandb, aspect_ratios=aspect_ratios,
+                   scales=scales, alpha=args.alpha, threshold=args.threshold, min_object_size=args.min_object_size,
+                   max_object_size=args.max_object_size, base_network_config=args.base_network_config)
     model.init()
 
     train_loader = dataset.train_dataloader()
