@@ -14,6 +14,7 @@ from math import sqrt
 from utils import *
 from base_network import ConvNetBase, CONVNET_CONFIGS
 from mobilenet import MOBILENET_CONFIGS
+from monai.losses import FocalLoss
 import wandb
 import os
 from os.path import join as pjoin
@@ -741,7 +742,8 @@ class MultiBoxLoss(nn.Module):
         self.alpha = alpha
 
         self.smooth_l1 = nn.L1Loss()
-        self.cross_entropy = nn.CrossEntropyLoss(reduction='none')
+        # self.cross_entropy = nn.CrossEntropyLoss(reduction='none')
+        self.cross_entropy = FocalLoss(reduction='none', gamma=2, include_background=False)
 
         if type(self.threshold) == list:
             if len(self.threshold) == 1:
