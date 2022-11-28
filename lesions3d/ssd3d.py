@@ -577,7 +577,7 @@ class LSSD3D(pl.LightningModule):
         avg_loc_loss = torch.stack([x["log"]["val_loc_loss"] for x in outputs]).mean()
 
         # Log the learning rate to keep track of it
-        self.log("hp_metric/lr", self.lr)
+        self.log("hp_metric/lr", self.lr_schedulers().get_last_lr()[1])
 
         # Log the different losses
         log_fn = self.log if self.use_wandb else self.logger.experiment.add_scalar
@@ -672,7 +672,7 @@ class LSSD3D(pl.LightningModule):
             log_fn('f1_score/training_IoU_0.5', avg_f1_score_50, *kwargs)
 
             l1_norm = self.compute_parameters_median_size()
-            log_fn('hp-_metric/parameter_sizes', l1_norm, *kwargs)
+            log_fn('hp_metric/parameter_sizes', l1_norm, *kwargs)
 
     def predict_step(self, batch, batch_idx: int, dataloader_idx: int = None):
         predicted_locs, predicted_scores = self(batch["img"])
