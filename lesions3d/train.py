@@ -45,7 +45,7 @@ parser.add_argument('-maxos', '--max_object_size', type=int, default=14,
                     help="Minimum size for an object (for computation of scales). Not taken into account if scales argument is set.")
 parser.add_argument('--alpha', type=int, default=1.,
                     help="alpha parameter for the multibox loss (= confidence loss + alpha * localization loss)")
-parser.add_argument('-a', '--augmentations', type=str, nargs='*', default=["flip", "rotate90d", "affine"])
+parser.add_argument('-a', '--augmentations', type=str, nargs='*', default=["flip", "rotate90d", "translate"])
 parser.add_argument('-ld', '--logdir', type=str, default=r'../logs/artificial_dataset')
 parser.add_argument('-c', '--cache', type=int, default=0, help="whether to cache the dataset or not")
 parser.add_argument('-nw', '--num_workers', type=int, default=8, help="number of workers for the dataset")
@@ -132,13 +132,16 @@ def example():
                      ("rotate90", {'spatial_axes': (1, 2), "prob": .5}),
                      ("rotate90", {'spatial_axes': (0, 1), "prob": .5}),
                      ("rotate90", {'spatial_axes': (0, 2), "prob": .5}),
-                     ("affine", {"mode": ('bilinear', 'nearest'),
-                                 "scale_range": (0.15, 0.15, 0.15), "padding_mode": 'reflection',
+                     ("translate", {"mode": ('bilinear', 'nearest'),
                                  "translate_range": (-3, 3),
+                                 "prob": .7}),
+                     ("scale", {"mode": ('bilinear', 'nearest'),
+                                 "scale_range": (0.15, 0.15, 0.15), "padding_mode": 'reflection',
                                  "prob": .7}),
                      ]
 
-    augmentations = [(n, i) for n, i in augmentations if n in args.augmentations]
+    augmentations = [(n.replace("translate", "affine").replace("scale","affine"), i)
+                     for n, i in augmentations if n in args.augmentations]
 
     dataset = ExampleDataset(n_classes=args.n_classes, subject=args.subject, percentage=args.percentage,
                              cache=args.cache, num_workers=args.num_workers, objects="multiple", verbose=bool(args.verbose),
