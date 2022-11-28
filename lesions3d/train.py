@@ -19,6 +19,7 @@ import json
 from os.path import join as pjoin
 from os.path import exists as pexists
 from pytorch_lightning.callbacks import EarlyStopping
+from monai.utils import set_determinsim
 os.environ["CUDA_LAUNCH_BLOCKING"] = "1"
 
 torch.multiprocessing.set_sharing_strategy('file_system')
@@ -125,6 +126,7 @@ def pickle_dataset(dataset, dataset_file):
 
 def example():
     pl.seed_everything(args.seed)
+    set_determinism(seed=args.seed)
 
     augmentations = [("flip", {"spatial_axis": (0, 1, 2), "prob": .5}),
                      ("rotate90", {'spatial_axes': (1, 2), "prob": .5}),
