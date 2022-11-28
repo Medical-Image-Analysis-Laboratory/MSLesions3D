@@ -19,7 +19,7 @@ import json
 from os.path import join as pjoin
 from os.path import exists as pexists
 from pytorch_lightning.callbacks import EarlyStopping
-from monai.utils import set_determinsim
+from monai.utils import set_determinism
 os.environ["CUDA_LAUNCH_BLOCKING"] = "1"
 
 torch.multiprocessing.set_sharing_strategy('file_system')
