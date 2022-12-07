@@ -15,6 +15,19 @@ from os.path import exists as pexists
 from datasets import ExampleDataset
 import nibabel as nib
 from utils import gcxgcygcz_to_cxcycz, cxcycz_to_gcxgcygcz
+import argparse
+import json
+
+os.environ["CUDA_LAUNCH_BLOCKING"] = "1"
+
+torch.multiprocessing.set_sharing_strategy('file_system')
+
+parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+parser.add_argument('-d', '--dataset_path', type=str, help="path to dataset used for training and validation",
+                    default=r'../data/artificial_dataset')
+parser.add_argument('-dn', '--dataset_name', type=str, help="name of dataset to use", default="#3k_64_n1-5_s6-14")
+parser.add_argument('-p', '--predictions_path', type=str, help="path to predictions directory")
+parser.add_argument('-s', '--scales', type=json.loads, default="{}", help="path to predictions directory")
 
 
 def idk_what_this_does():
@@ -107,7 +120,8 @@ def save_prior_boxes(loader, det_locs, output_dir=r"./predictions", filename="")
             nib.save(nib_img, pjoin(output_dir, f"sub-{subj}_prior-boxes{filename}.nii.gz"))
 
 
-def show_prior_boxes(output_dir=r"./predictions",
+def show_prior_boxes(dataset_path="/home/wynen/PycharmProjects/MSLesions3D/data/artificial_dataset", 
+                     dataset_name=None, output_dir=r"./predictions",
                      aspect_ratios={3: [1.], 5: [1.], 7: [1.]}, scales={1: 0.05, 3: 0.1, 5: .15, 7: .2}):
     """
     Show candidate bounding boxes according to aspect ratios and scales
@@ -118,17 +132,22 @@ def show_prior_boxes(output_dir=r"./predictions",
     """
     pl.seed_everything(970205)
 
-    dataset = ExampleDataset(n_classes=1, percentage=-1, cache=False, num_workers=8, objects="multiple", batch_size=1)
+    dataset = ExampleDataset(data_dir=dataset_path, n_classes=1, percentage=-1, cache=False, 
+            num_workers=8, objects="multiple", batch_size=1, dataset_name=dataset_name)
     dataset.setup(stage="predict")
     loader = dataset.predict_test_dataloader()
 
-    model = LSSD3D(n_classes=2, input_channels=1, lr=0.0005, width_mult=0.4, scheduler=None, batch_size=1,
-                   input_size=(64, 64, 64), compute_metric_every_n_epochs=5, use_wandb=False,
-                   ASPECT_RATIOS=aspect_ratios, SCALES=scales, min_score=0, top_k=50000)
+    #model = LSSD3D(n_classes=2, input_channels=1, lr=0.0005, width_mult=0.4, scheduler=None, batch_size=1,
+    #               input_size=(64, 64, 64), compute_metric_every_n_epochs=5, use_wandb=False,
+    #               aspect_ratios=aspect_ratios, scales=scales, min_score=0, top_k=50000)
+    model = LSSD3D(n_classes=2, input_channels=1, lr=0.001, width_mult=1.,
+                   input_size=(64,64,64),
+                   compute_metric_every_n_epochs=5, use_wandb=False, aspect_ratios=aspect_ratios,
+                   scales=scales, min_score=0, top_k=50000)
+
     model.init()
 
     if not pexists(output_dir): os.makedirs(output_dir)
-
     predictor = pl.Trainer(accelerator="gpu", devices=1, enable_progress_bar=True)
     predictions_all_batches = predictor.predict(model, dataloaders=loader)
 
@@ -156,4 +175,5 @@ def show_prior_boxes(output_dir=r"./predictions",
 if __name__ == "__main__":
     sc1 = {1: 0.05, 3: 0.1, 5: .15, 7: .2}
     sc2 = {1: 0.3, 3: 0.5, 5: .7, 7: .9}
-    show_prior_boxes(output_dir=r'/home/wynen/MSLesions3D/data/predictions', scales=sc1)
+    args = parser.parse_args()
+    show_prior_boxes(dataset_path=args.dataset_path, dataset_name=args.dataset_name, output_dir=args.predictions_path, scales=args.scales)

@@ -111,7 +111,7 @@ class MobileNetBase(nn.Module):
 
 
 class PredictionConvolutions(nn.Module):
-    def __init__(self, n_classes, width_mult, aspect_ratios, features_n_channels):
+    def __init__(self, n_classes, width_mult, aspect_ratios, features_n_channels, boxes_per_location=2):
         """
         :param n_classes: number of different types of objects
         """
@@ -120,7 +120,8 @@ class PredictionConvolutions(nn.Module):
         self.n_classes = n_classes
 
         # Number of prior-boxes we are considering per position in each feature map
-        n_boxes = {feat: len(aspect_ratios[feat]) + 1 for feat in aspect_ratios}
+        #n_boxes = {feat: len(aspect_ratios[feat]) + 1 for feat in aspect_ratios}
+        n_boxes = {feat: len(aspect_ratios[feat]) + boxes_per_location-1 for feat in aspect_ratios}
         # 4 prior-boxes implies we use 4 different aspect ratios, etc.
 
         self.loc_convs = []  # Localization prediction convolutions (predict offsets w.r.t prior-boxes)
@@ -177,7 +178,7 @@ class LSSD3D(pl.LightningModule):
                  n_classes,
                  input_channels=3,
                  input_size=(64, 64, 64),
-                 threshold=0.5,
+                 threshold=0.5, # threshold for box matching in MultiBoxLoss
                  alpha=1.,
                  lr=1.3e-5,
                  base_network_config="mobilenet",
@@ -194,7 +195,8 @@ class LSSD3D(pl.LightningModule):
                  aspect_ratios={},
                  min_object_size=6,
                  max_object_size=14,
-                 scales={}
+                 scales={},
+                 boxes_per_location=2
                  ):
         super(LSSD3D, self).__init__()
 
@@ -208,6 +210,7 @@ class LSSD3D(pl.LightningModule):
         self.input_channels = input_channels
         self.width_mult = width_mult
         self.aspect_ratios = aspect_ratios
+        self.boxes_per_location=2
 
         self.n_classes = n_classes
         self._make_base_and_prediction_layers()
@@ -267,13 +270,15 @@ class LSSD3D(pl.LightningModule):
             features_n_channels = self.base.get_feature_map_infos(self.input_size, self.device)[1]
             self.pred_convs = PredictionConvolutions(self.n_classes, width_mult=self.width_mult,
                                                      aspect_ratios=self.aspect_ratios,
-                                                     features_n_channels=features_n_channels)
+                                                     features_n_channels=features_n_channels,
+                                                     boxes_per_location=self.boxes_per_location)
         elif 'convnet' in self.base_network_config:
             self.base = ConvNetBase(self.aspect_ratios, config=self.base_network_config,
                                     in_channels=self.input_channels)
             features_n_channels = self.base.get_feature_map_infos(self.input_size, self.device)[1]
             self.pred_convs = PredictionConvolutions(self.n_classes, width_mult=1., aspect_ratios=self.aspect_ratios,
-                                                     features_n_channels=features_n_channels)
+                                                     features_n_channels=features_n_channels,
+                                                     boxes_per_location=self.boxes.per_location)
         else:
             raise Exception(
                 f"Unknown base network name. Expected 'mobilenet' or 'convnet' but got {self.base_network_config}")
@@ -310,14 +315,23 @@ class LSSD3D(pl.LightningModule):
 
                             if ratio == 1.:
                                 # Add a slightly bigger prior box
-                                try:
-                                    additional_scale = sqrt(obj_scales[fmap] * obj_scales[fmaps[l + 1]])
-                                except IndexError as e:
-                                    additional_scale = 1.
+                                #import pdb; pdb.set_trace()
+                                #breakpoint()
+                                
+                                #try:
+                                #    additional_scale = sqrt(obj_scales[fmap] * obj_scales[fmaps[l + 1]])
+                                #except IndexError as e:
+                                #    additional_scale = min(1., 2*obj_scales[fmap] - prior_boxes[-1][-1]) 
 
-                                prior_boxes.append([cx, cy, cz, additional_scale, additional_scale, additional_scale])
-                                prior_boxes_per_feature_map[fmap].append([cx, cy, cz, additional_scale,
-                                                                          additional_scale, additional_scale])
+                                #prior_boxes.append([cx, cy, cz, additional_scale, additional_scale, additional_scale])
+                                #prior_boxes_per_feature_map[fmap].append([cx, cy, cz, additional_scale,
+                                #                                          additional_scale, additional_scale])
+
+                                for div in list(range(1,self.boxes_per_location)):
+                                    additional_scale = obj_scales[fmap] + obj_scales[fmap]/div
+                                    prior_boxes.append([cx, cy, cz, additional_scale, additional_scale, additional_scale])
+                                    prior_boxes_per_feature_map[fmap].append([cx, cy, cz, additional_scale,
+                                                                              additional_scale, additional_scale])
 
         prior_boxes = torch.FloatTensor(prior_boxes).to(device)
         prior_boxes.clamp_(0, 1)
@@ -702,7 +716,7 @@ class LSSD3D(pl.LightningModule):
         optimizer = torch.optim.Adam(params=params, lr=self.lr, weight_decay=0.0005)
 
         if self.scheduler != "none":
-            scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=10, verbose=False)
+            scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=40, verbose=False)
             return [optimizer], [scheduler]
         else:
             return optimizer
@@ -742,8 +756,8 @@ class MultiBoxLoss(nn.Module):
         self.alpha = alpha
 
         self.smooth_l1 = nn.L1Loss()
-        # self.cross_entropy = nn.CrossEntropyLoss(reduction='none')
-        self.cross_entropy = FocalLoss(reduction='none', gamma=2, include_background=False)
+        self.cross_entropy = nn.CrossEntropyLoss(reduction='none')
+        #self.cross_entropy = FocalLoss(reduction="none",gamma=2,to_onehot_y=True, include_background=False, weight=0.25)
 
         if type(self.threshold) == list:
             if len(self.threshold) == 1:
@@ -909,13 +923,14 @@ class MultiBoxLoss(nn.Module):
         # To do this, sort ONLY negative priors in each image in order of decreasing loss and take top n_hard_negatives
         conf_loss_neg = conf_loss_all.clone()  # (N, xxx)
         conf_loss_neg[positive_priors] = 0.  # (N, xxx), positive priors are ignored (never in top n_hard_negatives)
-        conf_loss_neg, _ = conf_loss_neg.sort(dim=1, descending=True)  # (N, xxx), sorted by decreasing hardness
-        hardness_ranks = torch.LongTensor(range(n_priors)).unsqueeze(0).expand_as(conf_loss_neg).to(device)  # (N, xxx)
-        hard_negatives = hardness_ranks < n_hard_negatives.unsqueeze(1)  # (N, xxx)
-        conf_loss_hard_neg = conf_loss_neg[hard_negatives]  # (sum(n_hard_negatives))
+        #conf_loss_neg, _ = conf_loss_neg.sort(dim=1, descending=True)  # (N, xxx), sorted by decreasing hardness
+        #hardness_ranks = torch.LongTensor(range(n_priors)).unsqueeze(0).expand_as(conf_loss_neg).to(device)  # (N, xxx)
+        #hard_negatives = hardness_ranks < n_hard_negatives.unsqueeze(1)  # (N, xxx)
+        #conf_loss_hard_neg = conf_loss_neg[hard_negatives]  # (sum(n_hard_negatives))
 
         # As in the paper, averaged over positive priors only, although computed over both positive and hard-negative priors
-        conf_loss = (conf_loss_hard_neg.sum() + conf_loss_pos.sum()) / n_positives.sum().float()  # (), scalar
+        #conf_loss = (conf_loss_hard_neg.sum() + conf_loss_pos.sum()) / n_positives.sum().float()  # (), scalar
+        conf_loss = (conf_loss_neg.sum() + conf_loss_pos.sum()) / n_positives.sum().float()  # (), scalar
 
         # TOTAL LOSS
 

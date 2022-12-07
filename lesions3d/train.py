@@ -39,6 +39,7 @@ parser.add_argument('-th', '--threshold', type=float, default=[0.1,0.2], nargs='
 parser.add_argument('-pl', '--prediction_layers', type=str, default="3 5 7", help="feature maps on which to do the prediction convolutions.")
 parser.add_argument('-cfg', '--base_network_config', type=str, default="mobilenet", help="base network configuration")
 parser.add_argument('-sc', '--scales', type=json.loads, default="{}", help="Object scales per layer")
+parser.add_argument('-bpl', '--boxes_per_location', type=int, default=2, help="Number of anchors per location in the feature maps")
 parser.add_argument('-minos', '--min_object_size', type=int, default=6,
                     help="Minimum size for an object (for computation of scales). Not taken into account if scales argument is set.")
 parser.add_argument('-maxos', '--max_object_size', type=int, default=14,
@@ -154,7 +155,8 @@ def example():
                    scheduler=args.scheduler, batch_size=args.batch_size, comments=args.comments, input_size=input_size,
                    compute_metric_every_n_epochs=5, use_wandb=args.use_wandb, aspect_ratios=aspect_ratios,
                    scales=scales, alpha=args.alpha, threshold=args.threshold, min_object_size=args.min_object_size,
-                   max_object_size=args.max_object_size, base_network_config=args.base_network_config)
+                   max_object_size=args.max_object_size, base_network_config=args.base_network_config,
+                   boxes_per_location=args.boxes_per_location)
     model.init()
 
     train_loader = dataset.train_dataloader()
