@@ -20,10 +20,11 @@ import numpy as np
 parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 parser.add_argument('--dim', type=int, required=False, default=3, help="number of dimensions for the images")
 parser.add_argument('--n_classes', type=int, required=False, default=1, help="number of different classes to generate")
-parser.add_argument('--image_size', type=int, nargs='+', default=[250,300,300],
+parser.add_argument('--image_size', type=int, nargs='+', default=[250, 300, 300],
                     help="image size (length must match the number of dimensions)")
-parser.add_argument('--object_size', type=int, nargs='+', default=[10,32], help="range for object size [min, max]")
-parser.add_argument('--num_objects', type=int, nargs='+', default=[2, 5], help="range of number of objects to add on the image")
+parser.add_argument('--object_size', type=int, nargs='+', default=[10, 32], help="range for object size [min, max]")
+parser.add_argument('--num_objects', type=int, nargs='+', default=[2, 5],
+                    help="range of number of objects to add on the image")
 parser.add_argument('--object_width', type=int, required=False, default=4, help="width if # classes is 2")
 parser.add_argument('--num_processes', type=int, required=False, default=8, help="number of processes")
 parser.add_argument('--num_images', type=int, required=False, default=500, help="number of images to generate")
@@ -34,42 +35,42 @@ parser.add_argument('--random_seed', type=int, default=0, help="random seed")
 parser.add_argument('--box_noise', type=int, default=0, help="whether to add random noise the boxes intensity or not")
 
 args = parser.parse_args()
-dim = args.dim # 3
-image_size = list(args.image_size) # [250, 300, 300]
-object_size = sorted(list(args.object_size)) # [10, 32]
-object_width = args.object_width # 4
-n_classes = args.n_classes # 1
-num_processes = args.num_processes # 8
-num_images = args.num_images # 500
+dim = args.dim  # 3
+image_size = list(args.image_size)  # [250, 300, 300]
+object_size = sorted(list(args.object_size))  # [10, 32]
+object_width = args.object_width  # 4
+n_classes = args.n_classes  # 1
+num_processes = args.num_processes  # 8
+num_images = args.num_images  # 500
 add_noise = bool(args.noise)
 box_noise = bool(args.box_noise)
 num_objects = args.num_objects
 random_seed = args.random_seed
 print(f"Random seed set at {random_seed}")
 
-
 DIR = "one_class" if n_classes == 1 else "double_class"
 DIR = "multiple_objects/one_class"
 
-image_dir = pjoin(args.output_dir, DIR, "images") # rf"/home/wynen/MSLesions3D/data/artificial_dataset/{DIR}/images"
-seg_dir = pjoin(args.output_dir, DIR, "labels") # rf"/home/wynen/MSLesions3D/data/artificial_dataset/{DIR}/labels"
+image_dir = pjoin(args.output_dir, DIR, "images")  # rf"/home/wynen/MSLesions3D/data/artificial_dataset/{DIR}/images"
+seg_dir = pjoin(args.output_dir, DIR, "labels")  # rf"/home/wynen/MSLesions3D/data/artificial_dataset/{DIR}/labels"
 
 if not pexists(image_dir):
     os.makedirs(image_dir)
 if not pexists(seg_dir):
     os.makedirs(seg_dir)
 
-def generate_image(image_dir, label_dir, idx, n_classes, noise=add_noise):
+
+def generate_image(image_dir, seg_dir, idx, n_classes, noise=add_noise):
     print(f"Generating image and segmentation for case {idx}...")
     random.seed(random_seed + idx)
     np.random.seed(random_seed + idx)
-    
+
     data = np.random.rand(*image_size) if noise else np.zeros(image_size)
     mask = np.zeros_like(data)
 
     n_objects = np.random.randint(*num_objects)
 
-    for _ in range(n_objects+1):
+    for _ in range(n_objects + 1):
 
         selected_size = np.random.randint(object_size[0], object_size[1])
         selected_class = np.random.randint(0, n_classes)
@@ -102,13 +103,13 @@ def generate_image(image_dir, label_dir, idx, n_classes, noise=add_noise):
             mask[object_mask] = 2
         else:
             raise NotImplementedError
-        
-    
+
     image = nib.Nifti1Image(data, affine=np.eye(4))
     seg = nib.Nifti1Image(mask, affine=np.eye(4))
-    
+
     nib.save(image, pjoin(image_dir, f"sub-{str(idx).zfill(4)}_image.nii.gz"))
     nib.save(seg, pjoin(seg_dir, f"sub-{str(idx).zfill(4)}_seg.nii.gz"))
+
 
 def main():
     with Pool(processes=num_processes) as p:
@@ -122,8 +123,7 @@ def main():
             )
         )
 
+
 if __name__ == "__main__":
     # generate_image(image_dir, seg_dir, num_images, n_classes)
     main()
-
-
