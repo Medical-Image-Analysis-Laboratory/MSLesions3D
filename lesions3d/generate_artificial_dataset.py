@@ -52,25 +52,50 @@ DIR = "one_class" if n_classes == 1 else "double_class"
 DIR = "multiple_objects/one_class"
 
 image_dir = pjoin(args.output_dir, DIR, "images")  # rf"/home/wynen/MSLesions3D/data/artificial_dataset/{DIR}/images"
-seg_dir = pjoin(args.output_dir, DIR, "labels")  # rf"/home/wynen/MSLesions3D/data/artificial_dataset/{DIR}/labels"
+seg_dir = pjoin(args.output_dir, DIR, "segs")  # rf"/home/wynen/MSLesions3D/data/artificial_dataset/{DIR}/segs"
+borders_dir = pjoin(args.output_dir, DIR, "labels")  # rf"/home/wynen/MSLesions3D/data/artificial_dataset/{DIR}/labels"
 
 if not pexists(image_dir):
     os.makedirs(image_dir)
 if not pexists(seg_dir):
     os.makedirs(seg_dir)
+if not pexists(borders_dir):
+    os.makedirs(borders_dir)
 
 
-def generate_image(image_dir, seg_dir, idx, n_classes, noise=add_noise):
+def average_overlapping_intensity(image, mask, slicing, intensity, noise):
+    """
+    Average the intensity of the overlapping voxels in the image. If the mask is 1 at a given voxel in the slicing,
+    the intensity of the image is averaged with the intensity of the box. If the mask is 0, the intensity of the image
+    is set to intensity.
+    :param image: image to modify
+    :param mask: mask telling which voxels have been modified
+    :param slicing: slicing of the new box
+    :param intensity: intensity of the new box
+    :return: modified image
+    """
+    image_slice = image[slicing]
+    mask_slice = mask[slicing]
+    overlap = mask_slice > 0 # Find overlapping voxels
+    image_slice[overlap] = (image_slice[overlap] + intensity) / 2  # Average intensity of overlapping voxels
+    image_slice[~overlap] = image_slice[~overlap] + 0.4 if noise else intensity   # Set intensity of non-overlapping voxels in mask to intensity
+    image_slice[~overlap] = np.clip(image_slice[~overlap], 0, 1)  # Clip intensity to [0, 1]
+    image[slicing] = image_slice
+    return image
+
+
+def generate_image(image_dir, seg_dir, borders_dir, idx, n_classes, noise=add_noise):
     print(f"Generating image and segmentation for case {idx}...")
     random.seed(random_seed + idx)
     np.random.seed(random_seed + idx)
 
     data = np.random.rand(*image_size) if noise else np.zeros(image_size)
     mask = np.zeros_like(data)
+    borders = np.zeros_like(data)
 
     n_objects = np.random.randint(*num_objects)
 
-    for _ in range(n_objects + 1):
+    for obj_idx in range(n_objects + 1):
 
         selected_size = np.random.randint(object_size[0], object_size[1])
         selected_class = np.random.randint(0, n_classes)
@@ -82,9 +107,25 @@ def generate_image(image_dir, seg_dir, idx, n_classes, noise=add_noise):
         if selected_class == 0:
             slicing = tuple([slice(tp, tp + selected_size) for tp in top_left])
             intensity = 1 if not box_noise else np.random.uniform(0.5, 1)
-            data[slicing] = data[slicing] + 0.4 if noise else intensity
-            data = data.clip(0, 1)
+            data = average_overlapping_intensity(data, mask, slicing, intensity, noise)
             mask[slicing] = 1
+
+            if dim == 2:
+                borders[slicing[0].start:slicing[0].stop + 1, slicing[1].start] = obj_idx + 1
+                borders[slicing[0].start:slicing[0].stop + 1, slicing[1].stop] = obj_idx + 1
+                borders[slicing[0].start, slicing[0].start:slicing[1].stop] = obj_idx + 1
+                borders[slicing[0].stop, slicing[0].start:slicing[1].stop] = obj_idx + 1
+            elif dim == 3:
+                borders[slicing[0].start:slicing[0].stop, slicing[1].start:slicing[1].stop, slicing[2].start] = obj_idx + 1
+                borders[slicing[0].start:slicing[0].stop, slicing[1].start:slicing[1].stop, slicing[2].stop -1] = obj_idx + 1
+
+                borders[slicing[0].start, slicing[1].start:slicing[1].stop, slicing[2].start:slicing[2].stop] = obj_idx + 1
+                borders[slicing[0].stop -1, slicing[1].start:slicing[1].stop, slicing[2].start:slicing[2].stop] = obj_idx + 1
+
+                borders[slicing[0].start:slicing[0].stop, slicing[1].start, slicing[2].start:slicing[2].stop] = obj_idx + 1
+                borders[slicing[0].start:slicing[0].stop, slicing[1].stop -1, slicing[2].start:slicing[2].stop] = obj_idx + 1
+
+        # Not handled
         elif selected_class == 1:
             slicing = tuple([slice(tp, tp + selected_size) for tp in top_left])
 
@@ -106,9 +147,11 @@ def generate_image(image_dir, seg_dir, idx, n_classes, noise=add_noise):
 
     image = nib.Nifti1Image(data, affine=np.eye(4))
     seg = nib.Nifti1Image(mask, affine=np.eye(4))
+    labels = nib.Nifti1Image(borders, affine=np.eye(4))
 
     nib.save(image, pjoin(image_dir, f"sub-{str(idx).zfill(4)}_image.nii.gz"))
     nib.save(seg, pjoin(seg_dir, f"sub-{str(idx).zfill(4)}_seg.nii.gz"))
+    nib.save(labels, pjoin(borders_dir, f"sub-{str(idx).zfill(4)}_labels.nii.gz"))
 
 
 def main():
@@ -118,6 +161,7 @@ def main():
             zip(
                 repeat(image_dir),
                 repeat(seg_dir),
+                repeat(borders_dir),
                 range(num_images),
                 repeat(n_classes)
             )
