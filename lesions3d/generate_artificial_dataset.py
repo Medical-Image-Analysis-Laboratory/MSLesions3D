@@ -158,7 +158,6 @@ def main():
             zip(
                 repeat(image_dir),
                 repeat(seg_dir),
-                repeat(borders_dir),
                 range(num_images),
                 repeat(n_classes)
             )
