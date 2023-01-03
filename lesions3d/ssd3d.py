@@ -315,23 +315,22 @@ class LSSD3D(pl.LightningModule):
 
                             if ratio == 1.:
                                 # Add a slightly bigger prior box
-                                #import pdb; pdb.set_trace()
-                                #breakpoint()
-                                
-                                #try:
-                                #    additional_scale = sqrt(obj_scales[fmap] * obj_scales[fmaps[l + 1]])
-                                #except IndexError as e:
-                                #    additional_scale = min(1., 2*obj_scales[fmap] - prior_boxes[-1][-1]) 
-
-                                #prior_boxes.append([cx, cy, cz, additional_scale, additional_scale, additional_scale])
-                                #prior_boxes_per_feature_map[fmap].append([cx, cy, cz, additional_scale,
-                                #                                          additional_scale, additional_scale])
-
-                                for div in list(range(1,self.boxes_per_location)):
-                                    additional_scale = obj_scales[fmap] + obj_scales[fmap]/div
-                                    prior_boxes.append([cx, cy, cz, additional_scale, additional_scale, additional_scale])
+                                if self.boxes_per_location == 2:
+                                    try:
+                                        additional_scale = sqrt(obj_scales[fmap] * obj_scales[fmaps[l + 1]])
+                                    except IndexError as e:
+                                        additional_scale = min(1., 2 * obj_scales[fmap] - prior_boxes[-1][-1])
+                                    prior_boxes.append(
+                                        [cx, cy, cz, additional_scale, additional_scale, additional_scale])
                                     prior_boxes_per_feature_map[fmap].append([cx, cy, cz, additional_scale,
                                                                               additional_scale, additional_scale])
+                                else:
+                                    for div in list(range(1, self.boxes_per_location)):
+                                        additional_scale = obj_scales[fmap] + obj_scales[fmap] / div
+                                        prior_boxes.append(
+                                            [cx, cy, cz, additional_scale, additional_scale, additional_scale])
+                                        prior_boxes_per_feature_map[fmap].append([cx, cy, cz, additional_scale,
+                                                                                  additional_scale, additional_scale])
 
         prior_boxes = torch.FloatTensor(prior_boxes).to(device)
         prior_boxes.clamp_(0, 1)

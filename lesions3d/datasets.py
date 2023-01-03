@@ -359,8 +359,8 @@ def stats_foreground(ds, show=False):
 class ExampleDataset(pl.LightningDataModule):
     def __init__(self, n_classes=1, objects="multiple", percentage=1., augmentations=None, batch_size=8,
                  num_workers=int(os.cpu_count() / 2), verbose=False, show=False, random_state=970205, cache=False,
-                 subject=None, data_dir="/home/wynen/PycharmProjects/MSLesions3D/data/artificial_dataset",
-                 dataset_name=None):
+                 subject=None, dataset_name=None, seg_filename="seg",
+                 data_dir="/home/wynen/PycharmProjects/MSLesions3D/data/artificial_dataset"):
 
         super().__init__()
 
@@ -388,6 +388,7 @@ class ExampleDataset(pl.LightningDataModule):
         self.subjects_list = self.subjects_list[:int(percentage * len(self.subjects_list))] if percentage > 0 \
             else self.subjects_list
         self.subject = subject
+        self.seg_filename = seg_filename
 
         self.train_transform = Compose(self.get_list_of_transforms("train"))
         self.test_transform = Compose(self.get_list_of_transforms("test"))
@@ -451,10 +452,10 @@ class ExampleDataset(pl.LightningDataModule):
         DS = CacheDataset if self.cache else Dataset
 
         data_train = [{'img': pjoin(self.data_dir, "images", f"sub-{s}_image.nii.gz"),
-                       'seg': pjoin(self.data_dir, "labels", f"sub-{s}_seg.nii.gz"),
+                       'seg': pjoin(self.data_dir, "labels", f"sub-{s}_{self.seg_filename}.nii.gz"),
                        'subject': s} for s in self.trainsubs]
         data_test = [{'img': pjoin(self.data_dir, "images", f"sub-{s}_image.nii.gz"),
-                      'seg': pjoin(self.data_dir, "labels", f"sub-{s}_seg.nii.gz"),
+                      'seg': pjoin(self.data_dir, "labels", f"sub-{s}_{self.seg_filename}.nii.gz"),
                       'subject': s} for s in self.testsubs]
 
         if stage == "fit" or stage is None:

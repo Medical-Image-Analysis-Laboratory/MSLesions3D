@@ -53,14 +53,11 @@ DIR = "multiple_objects/one_class"
 
 image_dir = pjoin(args.output_dir, DIR, "images")  # rf"/home/wynen/MSLesions3D/data/artificial_dataset/{DIR}/images"
 seg_dir = pjoin(args.output_dir, DIR, "segs")  # rf"/home/wynen/MSLesions3D/data/artificial_dataset/{DIR}/segs"
-borders_dir = pjoin(args.output_dir, DIR, "labels")  # rf"/home/wynen/MSLesions3D/data/artificial_dataset/{DIR}/labels"
 
 if not pexists(image_dir):
     os.makedirs(image_dir)
 if not pexists(seg_dir):
     os.makedirs(seg_dir)
-if not pexists(borders_dir):
-    os.makedirs(borders_dir)
 
 
 def average_overlapping_intensity(image, mask, slicing, intensity, noise):
@@ -84,7 +81,7 @@ def average_overlapping_intensity(image, mask, slicing, intensity, noise):
     return image
 
 
-def generate_image(image_dir, seg_dir, borders_dir, idx, n_classes, noise=add_noise):
+def generate_image(image_dir, seg_dir, idx, n_classes, noise=add_noise):
     print(f"Generating image and segmentation for case {idx}...")
     random.seed(random_seed + idx)
     np.random.seed(random_seed + idx)
@@ -151,7 +148,7 @@ def generate_image(image_dir, seg_dir, borders_dir, idx, n_classes, noise=add_no
 
     nib.save(image, pjoin(image_dir, f"sub-{str(idx).zfill(4)}_image.nii.gz"))
     nib.save(seg, pjoin(seg_dir, f"sub-{str(idx).zfill(4)}_seg.nii.gz"))
-    nib.save(labels, pjoin(borders_dir, f"sub-{str(idx).zfill(4)}_labels.nii.gz"))
+    nib.save(labels, pjoin(seg_dir, f"sub-{str(idx).zfill(4)}_labels.nii.gz"))
 
 
 def main():

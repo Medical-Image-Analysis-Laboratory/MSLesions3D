@@ -28,6 +28,7 @@ parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFo
 parser.add_argument('-d', '--dataset_path', type=str, help="path to dataset used for training and validation",
                     default=r'../data/artificial_dataset')
 parser.add_argument('-dn', '--dataset_name', type=str, help="name of dataset to use", default="#3k_64_n1-5_s6-14")
+parser.add_argument('-sf', '--seg_filename', type=str, help="filename for the segmentations", default="seg")
 parser.add_argument('-su', '--subject', type=str, default=None,
                     help="if training has to be done on 1 subject, specify its id")  # Set default to None
 parser.add_argument('-p', '--percentage', type=float, default=1., help="percentage of the whole dataset to train on")
