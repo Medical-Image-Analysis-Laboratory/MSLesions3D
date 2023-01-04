@@ -52,7 +52,7 @@ DIR = "one_class" if n_classes == 1 else "double_class"
 DIR = "multiple_objects/one_class"
 
 image_dir = pjoin(args.output_dir, DIR, "images")  # rf"/home/wynen/MSLesions3D/data/artificial_dataset/{DIR}/images"
-seg_dir = pjoin(args.output_dir, DIR, "segs")  # rf"/home/wynen/MSLesions3D/data/artificial_dataset/{DIR}/segs"
+seg_dir = pjoin(args.output_dir, DIR, "labels")  # rf"/home/wynen/MSLesions3D/data/artificial_dataset/{DIR}/segs"
 
 if not pexists(image_dir):
     os.makedirs(image_dir)

@@ -359,7 +359,7 @@ def stats_foreground(ds, show=False):
 class ExampleDataset(pl.LightningDataModule):
     def __init__(self, n_classes=1, objects="multiple", percentage=1., augmentations=None, batch_size=8,
                  num_workers=int(os.cpu_count() / 2), verbose=False, show=False, random_state=970205, cache=False,
-                 subject=None, dataset_name=None, seg_filename="seg",
+                 subject=None, dataset_name=None, seg_filename="seg", segmentation_mode="classes", seg_thresholds=None,
                  data_dir="/home/wynen/PycharmProjects/MSLesions3D/data/artificial_dataset"):
 
         super().__init__()
@@ -380,7 +380,10 @@ class ExampleDataset(pl.LightningDataModule):
         # self.augment = augment
         self.percentage = percentage
         self.verbose = verbose
-        self.segmentation_mode="classes"
+        self.segmentation_mode=segmentation_mode
+        self.seg_thresholds = seg_thresholds
+        if self.segmentation_mode == "instances" and seg_thresholds is None:
+            self.seg_thresholds = [(1, np.inf)]
         self.n_classes = n_classes
         self.augmentations = augmentations
         self.show=show
@@ -403,7 +406,9 @@ class ExampleDataset(pl.LightningDataModule):
                            ("add_channel", {}),
                            ("normalizeintensity", {"nonzero": True}),
                            ]
-        base_list_end = [("bounding_boxes_generator", {"segmentation_mode": self.segmentation_mode, "n_classes": self.n_classes}),
+        base_list_end = [("bounding_boxes_generator", {"segmentation_mode": self.segmentation_mode,
+                                                       "thresholds": self.seg_thresholds,
+                                                       "n_classes": self.n_classes}),
                          ("to_tensor", {}),
                          ]
 
