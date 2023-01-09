@@ -412,7 +412,7 @@ class ExampleDataset(pl.LightningDataModule):
         base_list_start = [("load_image", {}),
                            ("add_channel", {}),
                            ("normalizeintensity", {"nonzero": True}),
-                           ("spatial_crop_samples", {"roi_size": (96,96,96), "num_samples": 3}),
+                           #("spatial_crop_samples", {"roi_size": (96,96,96), "num_samples": 3}),
                            ]
         base_list_end = [("bounding_boxes_generator", {"segmentation_mode": self.segmentation_mode,
                                                        "thresholds": self.seg_thresholds,

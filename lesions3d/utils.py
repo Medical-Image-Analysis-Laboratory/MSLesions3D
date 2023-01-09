@@ -470,18 +470,21 @@ class BoundingBoxesGeneratord(MapTransform, InvertibleTransform):
         else:
             raise ValueError(f"Unknown segmentation_mode={self.segmentation_mode}")
 
-        gt_bboxes = torch.FloatTensor(gt_bboxes) / torch.FloatTensor(image_size * 2)
-        gt_labels = torch.LongTensor(gt_labels)
+        if len(gt_bboxes) != 0:
+            gt_bboxes = torch.FloatTensor(gt_bboxes) / torch.FloatTensor(image_size * 2)
+            gt_labels = torch.LongTensor(gt_labels)
 
-        # Filter areas = 0
-        areas = box_area(gt_bboxes)
-        zero_area_indices = torch.argwhere(areas == 0.0).flatten()
-        for i, idx in enumerate(zero_area_indices):
-            idx = int(idx) - i
-            gt_bboxes = torch.cat((gt_bboxes[:idx, :], gt_bboxes[idx + 1:, :]))
-            gt_labels = torch.cat((gt_labels[:idx], gt_labels[idx + 1:]))
+            # Filter areas = 0
+            areas = box_area(gt_bboxes)
+            zero_area_indices = torch.argwhere(areas == 0.0).flatten()
+            for i, idx in enumerate(zero_area_indices):
+                idx = int(idx) - i
+                gt_bboxes = torch.cat((gt_bboxes[:idx, :], gt_bboxes[idx + 1:, :]))
+                gt_labels = torch.cat((gt_labels[:idx], gt_labels[idx + 1:]))
 
-        return gt_bboxes, gt_labels
+            return gt_bboxes, gt_labels
+        else:
+            return torch.FloatTensor(gt_bboxes), torch.LongTensor(gt_labels)
 
     def _from_instances(self, seg, thresholds=None):
         gt_bboxes = []

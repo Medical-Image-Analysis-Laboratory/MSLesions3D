@@ -196,7 +196,8 @@ class LSSD3D(pl.LightningModule):
                  min_object_size=6,
                  max_object_size=14,
                  scales={},
-                 boxes_per_location=2
+                 boxes_per_location=2,
+                 classification_loss='crossentropy', #or 'focal'
                  ):
         super(LSSD3D, self).__init__()
 
@@ -242,8 +243,10 @@ class LSSD3D(pl.LightningModule):
 
         # Prior boxes
         self.priors_cxcycz = self.create_prior_boxes()
-
-        self.loss_fn = MultiBoxLoss(self.priors_cxcycz, threshold=threshold, alpha=alpha)
+        
+        # Loss
+        self.loss_fn = MultiBoxLoss(self.priors_cxcycz, threshold=threshold, alpha=alpha, 
+                                    classification_loss=classification_loss)
 
     def forward(self, image):
         feats = self.base(image)
@@ -478,6 +481,8 @@ class LSSD3D(pl.LightningModule):
             raise Exception("Oh no this NaN error again")  # If this error occurs, try decreasing the learning rate
 
         for i, subj_boxes in enumerate(gt_boxes):
+            if len(subj_boxes) == 0:
+                continue
             for axis in (0, 1, 2):
                 negatives = (subj_boxes[:, axis + 3] < subj_boxes[:, axis]).sum()
                 zeros = (subj_boxes[:, axis + 3] == subj_boxes[:, axis]).sum()
@@ -541,6 +546,8 @@ class LSSD3D(pl.LightningModule):
         predicted_locs, predicted_scores = self(images)  # (N, xxx, 6), (N, xxx, n_classes)
 
         for i, subj_boxes in enumerate(gt_boxes):
+            if len(subj_boxes) == 0:
+                continue
             for axis in (0, 1, 2):
                 negatives = (subj_boxes[:, axis + 3] < subj_boxes[:, axis]).sum()
                 zeros = (subj_boxes[:, axis + 3] == subj_boxes[:, axis]).sum()
@@ -746,7 +753,7 @@ class MultiBoxLoss(nn.Module):
     (2) a confidence loss for the predicted class scores.
     """
 
-    def __init__(self, priors_cxcycz, threshold=0.5, neg_pos_ratio=3, alpha=1.):
+    def __init__(self, priors_cxcycz, threshold=0.5, neg_pos_ratio=3, alpha=1., classification_loss='crossentropy'):
         super(MultiBoxLoss, self).__init__()
         self.priors_cxcycz = priors_cxcycz
         self.priors_xyz = cxcycz_to_xyz(priors_cxcycz)
@@ -755,8 +762,13 @@ class MultiBoxLoss(nn.Module):
         self.alpha = alpha
 
         self.smooth_l1 = nn.L1Loss()
-        self.cross_entropy = nn.CrossEntropyLoss(reduction='none')
-        #self.cross_entropy = FocalLoss(reduction="none",gamma=2,to_onehot_y=True, include_background=False, weight=0.25)
+        self.classification_loss = 'focal' #classification_loss
+        if self.classification_loss == 'crossentropy':
+            self.clf_loss = nn.CrossEntropyLoss(reduction='none')
+        elif self.classification_loss == 'focal':
+            self.clf_loss = FocalLoss(reduction="none",gamma=2,to_onehot_y=True, include_background=False, weight=0.25)
+        else:
+            raise ValueError(f"Classification loss must be either 'crossentropy' or 'focal' but got {self.classification_loss}")
 
         if type(self.threshold) == list:
             if len(self.threshold) == 1:
@@ -890,9 +902,12 @@ class MultiBoxLoss(nn.Module):
         positive_priors = true_classes > 0  # (N, xxx)
 
         # LOCALIZATION LOSS
-
-        # Localization loss is computed only over positive (non-background) priors
-        loc_loss = self.smooth_l1(predicted_locs[positive_priors], true_locs[positive_priors])  # (), scalar
+        
+        if positive_priors.sum() == 0: # if not any TPs in all batch
+            loc_loss = torch.FloatTensor([0]).to(positive_priors.device) # set loc_loss to 0
+        else:
+            # Localization loss is computed only over positive (non-background) priors        
+            loc_loss = self.smooth_l1(predicted_locs[positive_priors], true_locs[positive_priors])  # (), scalar
 
         # Note: indexing with a torch.uint8 (byte) tensor flattens the tensor when indexing is across multiple dimensions (N & xxx)
         # So, if predicted_locs has the shape (N, xxx, 6), predicted_locs[positive_priors] will have (total positives, 6)
@@ -906,30 +921,45 @@ class MultiBoxLoss(nn.Module):
 
         # Number of positive and hard-negative priors per image
         n_positives = positive_priors.sum(dim=1)  # (N)
-        n_hard_negatives = self.neg_pos_ratio * n_positives  # (N)
 
         # First, find the loss for all priors
         tc = torch.clone(true_classes.view(-1))
         tc[tc == -1] = 0
-        conf_loss_all = self.cross_entropy(predicted_scores.view(-1, n_classes), tc.view(-1))  # (N * xxx)
+        conf_loss_all = self.clf_loss(predicted_scores.view(-1, n_classes), tc.view(-1))  # (N * xxx)
         conf_loss_all = conf_loss_all.view(batch_size, n_priors)  # (N, xxx)
         conf_loss_all[true_classes < 0] = 0
+        
+        if self.classification_loss == 'crossentropy':
+            # We already know which priors are positive
+            conf_loss_pos = conf_loss_all[positive_priors]  # (sum(n_positives))
 
-        # We already know which priors are positive
-        conf_loss_pos = conf_loss_all[positive_priors]  # (sum(n_positives))
+            # Next, find which priors are hard-negative
+            # To do this, sort ONLY negative priors in each image in order of decreasing loss and take top n_hard_negatives
+            conf_loss_neg = conf_loss_all.clone()  # (N, xxx)
+            conf_loss_neg[positive_priors] = 0.  # (N, xxx), positive priors are ignored (never in top n_hard_negatives)
+        
+            # Comment this if focal loss is used
+            n_hard_negatives = self.neg_pos_ratio * n_positives  # (N)
+            # Handle case where there are no TP in the batch
+            n_hard_negatives[n_hard_negatives == 0] = self.neg_pos_ratio
+            conf_loss_neg, _ = conf_loss_neg.sort(dim=1, descending=True)  # (N, xxx), sorted by decreasing hardness
+            hardness_ranks = torch.LongTensor(range(n_priors)).unsqueeze(0).expand_as(conf_loss_neg).to(device)  # (N, xxx)
+            hard_negatives = hardness_ranks < n_hard_negatives.unsqueeze(1)  # (N, xxx)
+            conf_loss_hard_neg = conf_loss_neg[hard_negatives]  # (sum(n_hard_negatives))
+        
+            # Handle the case where no single true positive is present in the batch
+            denominator = n_positives.sum().float() # (), scalar
+            denominator = 1 if denominator == 0 else denominator
 
-        # Next, find which priors are hard-negative
-        # To do this, sort ONLY negative priors in each image in order of decreasing loss and take top n_hard_negatives
-        conf_loss_neg = conf_loss_all.clone()  # (N, xxx)
-        conf_loss_neg[positive_priors] = 0.  # (N, xxx), positive priors are ignored (never in top n_hard_negatives)
-        #conf_loss_neg, _ = conf_loss_neg.sort(dim=1, descending=True)  # (N, xxx), sorted by decreasing hardness
-        #hardness_ranks = torch.LongTensor(range(n_priors)).unsqueeze(0).expand_as(conf_loss_neg).to(device)  # (N, xxx)
-        #hard_negatives = hardness_ranks < n_hard_negatives.unsqueeze(1)  # (N, xxx)
-        #conf_loss_hard_neg = conf_loss_neg[hard_negatives]  # (sum(n_hard_negatives))
+            # As in the paper, averaged over positive priors only, although computed over both positive and hard-negative priors
+            # (Un)comment this line if focal loss is used
+            conf_loss = (conf_loss_hard_neg.sum() + conf_loss_pos.sum()) / denominator  # (), scalar
+        
+        elif self.classification_loss == 'focal':
+            conf_loss = conf_loss_all.mean() 
 
-        # As in the paper, averaged over positive priors only, although computed over both positive and hard-negative priors
-        #conf_loss = (conf_loss_hard_neg.sum() + conf_loss_pos.sum()) / n_positives.sum().float()  # (), scalar
-        conf_loss = (conf_loss_neg.sum() + conf_loss_pos.sum()) / n_positives.sum().float()  # (), scalar
+        else:
+            raise ValueError("There shouldn't be an error here. Check your code again.")
 
         # TOTAL LOSS
 

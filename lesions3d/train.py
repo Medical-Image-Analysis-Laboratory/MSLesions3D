@@ -153,7 +153,7 @@ def example():
                              cache=args.cache, num_workers=args.num_workers, objects="multiple", verbose=bool(args.verbose),
                              batch_size=args.batch_size, augmentations=augmentations, data_dir=args.dataset_path,
                              dataset_name=args.dataset_name, seg_filename=args.seg_filename,
-                             segmentation_mode=args.segmentation_mode, seg_thresholds=args.seg_thresholds)
+                             segmentation_mode=args.seg_mode, seg_thresholds=args.seg_thresholds)
     dataset.setup(stage="fit")
     input_size = tuple(dataset.train_dataset[0]["img"].shape)[1:]
 
