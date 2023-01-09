@@ -9,16 +9,17 @@ import numpy as np
 import copy
 import warnings
 import matplotlib.pyplot as plt
-from typing import Callable
 from scipy.ndimage.measurements import label
 from monai.config import KeysCollection
-from monai.transforms.transform import MapTransform
+from monai.transforms import RandCropByPosNegLabeld, FgBgToIndices
+from monai.transforms.transform import MapTransform, Randomizable
 from monai.transforms.inverse import InvertibleTransform
 from copy import deepcopy
-from typing import Callable, Dict, Hashable, Mapping
+from typing import Callable, Dict, Hashable, Mapping, Optional, Sequence, Union, List
 from monai.config.type_definitions import NdarrayOrTensor
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 from monai.data import box_area
+from monai.utils.deprecate_utils import deprecated_arg
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -683,6 +684,85 @@ def show_multiple_images(list_of_images, slice, dim, titles=[], plt_title=""):
     fig.tight_layout()
 
     plt.show()
+
+class CustomRandCropByPosNegLabeld(RandCropByPosNegLabeld):
+    """
+    Custom version of the dictionary-based version of :py:class:`monai.transforms.RandCropByPosNegLabel`.
+    Crop random fixed sized regions with the center being a foreground or background voxel
+    based on the Pos Neg Ratio.
+    Suppose all the expected fields specified by `keys` have same shape,
+    and add `patch_index` to the corresponding metadata.
+    And will return a list of dictionaries for all the cropped images.
+
+    If a dimension of the expected spatial size is larger than the input image size,
+    will not crop that dimension. So the cropped result may be smaller than the expected size,
+    and the cropped results of several images may not have exactly the same shape.
+    And if the crop ROI is partly out of the image, will automatically adjust the crop center
+    to ensure the valid crop ROI.
+
+    The main difference with RandCropByPosNegLabeld is that this version first categorizes the foreground
+    and background voxels before sampling the crop center.
+
+    Args:
+        keys: keys of the corresponding items to be transformed.
+            See also: :py:class:`monai.transforms.compose.MapTransform`
+        label_key: name of key for label image, this will be used for finding foreground/background.
+        spatial_size: the spatial size of the crop region e.g. [224, 224, 128].
+            if a dimension of ROI size is larger than image size, will not crop that dimension of the image.
+            if its components have non-positive values, the corresponding size of `data[label_key]` will be used.
+            for example: if the spatial size of input data is [40, 40, 40] and `spatial_size=[32, 64, -1]`,
+            the spatial size of output data will be [32, 40, 40].
+        pos: used with `neg` together to calculate the ratio ``pos / (pos + neg)`` for the probability
+            to pick a foreground voxel as a center rather than a background voxel.
+        neg: used with `pos` together to calculate the ratio ``pos / (pos + neg)`` for the probability
+            to pick a foreground voxel as a center rather than a background voxel.
+        num_samples: number of samples (crop regions) to take in each list.
+        image_key: if image_key is not None, use ``label == 0 & image > image_threshold`` to select
+            the negative sample(background) center. so the crop center will only exist on valid image area.
+        image_threshold: if enabled image_key, use ``image > image_threshold`` to determine
+            the valid image content area.
+        fg_indices_key: if provided pre-computed foreground indices of `label`, will ignore above `image_key` and
+            `image_threshold`, and randomly select crop centers based on them, need to provide `fg_indices_key`
+            and `bg_indices_key` together, expect to be 1 dim array of spatial indices after flattening.
+            a typical usage is to call `FgBgToIndicesd` transform first and cache the results.
+        bg_indices_key: if provided pre-computed background indices of `label`, will ignore above `image_key` and
+            `image_threshold`, and randomly select crop centers based on them, need to provide `fg_indices_key`
+            and `bg_indices_key` together, expect to be 1 dim array of spatial indices after flattening.
+            a typical usage is to call `FgBgToIndicesd` transform first and cache the results.
+        allow_smaller: if `False`, an exception will be raised if the image is smaller than
+            the requested ROI in any dimension. If `True`, any smaller dimensions will be set to
+            match the cropped size (i.e., no cropping in that dimension).
+        allow_missing_keys: don't raise exception if key is missing.
+
+    Raises:
+        ValueError: When ``pos`` or ``neg`` are negative.
+        ValueError: When ``pos=0`` and ``neg=0``. Incompatible values.
+
+    """
+    def __init__(
+        self,
+        keys: KeysCollection,
+        label_key: str,
+        spatial_size: Union[Sequence[int], int],
+        pos: float = 1.0,
+        neg: float = 1.0,
+        num_samples: int = 1,
+        image_key: Optional[str] = None,
+        image_threshold: float = 0.0,
+        meta_keys: Optional[KeysCollection] = None,
+        meta_key_postfix: str = "meta_dict",
+        allow_smaller: bool = False,
+        allow_missing_keys: bool = False,
+    ) -> None:
+        super().__init__(keys, label_key, spatial_size, pos, neg, num_samples, image_key, image_threshold,
+            None, None, meta_keys, meta_key_postfix, allow_smaller, allow_missing_keys)
+
+    def __call__(self, data: Mapping[Hashable, torch.Tensor]) -> List[Dict[Hashable, torch.Tensor]]:
+        find_fg_bg_indices = FgBgToIndices(image_threshold=-0.1)
+        self.fg_indices_key, self.bg_indices_key = find_fg_bg_indices(data["seg"])
+
+        return super.__call__(data)
+
 
 
 class ShowImage(MapTransform, InvertibleTransform):

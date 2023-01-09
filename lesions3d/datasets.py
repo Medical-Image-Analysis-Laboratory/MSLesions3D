@@ -10,7 +10,7 @@ import torch
 import os
 # from os.path import exists as pexists
 from os.path import join as pjoin
-from utils import BoundingBoxesGeneratord, Printer, ShowImage
+from utils import BoundingBoxesGeneratord, Printer, ShowImage, CustomRandCropByPosNegLabeld
 from random import randint
 from monai.data import Dataset, CacheDataset, DataLoader
 from monai.transforms import (
@@ -19,6 +19,7 @@ from monai.transforms import (
     ToTensord,
     AddChanneld,
     CropForegroundd,
+    FgBgToIndicesd,
     Orientationd,
     ResizeWithPadOrCropd,
     ScaleIntensityd,
@@ -31,7 +32,8 @@ from monai.transforms import (
     RandShiftIntensityd,
     RandScaleIntensityd,
     RandAffined,
-    Spacingd
+    RandSpatialCropSamplesd,
+    Spacingd,
 )
 import numpy as np
 import matplotlib.pyplot as plt
@@ -114,7 +116,9 @@ def get_transform_from_name(name, **kwargs):
         "affine": (RandAffined, ["img","seg"]), #mode=('bilinear', 'nearest'), rotate_range=(np.pi /12, np.pi /12, np.pi /12),  scale_range=(0.1, 0.1, 0.1), padding_mode='border'
         "shiftintensity": (RandShiftIntensityd, ["img"]),
         "scaleintensity": (RandScaleIntensityd, ["img"]),
-        "spacing": (Spacingd, ["img", "seg"])
+        "spacing": (Spacingd, ["img", "seg"]),
+        "fgbg_to_indices": (FgBgToIndicesd, ["seg"]),
+        "spatial_crop_samples": (RandSpatialCropSamplesd, ["img", "seg"]),
 
     }
 
@@ -393,8 +397,11 @@ class ExampleDataset(pl.LightningDataModule):
         self.subject = subject
         self.seg_filename = seg_filename
 
-        self.train_transform = Compose(self.get_list_of_transforms("train"))
-        self.test_transform = Compose(self.get_list_of_transforms("test"))
+        self.train_transform_list = self.get_list_of_transforms("train")
+        self.test_transform_list = self.get_list_of_transforms("test")
+
+        self.train_transform = Compose(self.train_transform_list)
+        self.test_transform = Compose(self.test_transform_list)
 
         self.dl_dict = {'batch_size': self.batch_size, 'num_workers': self.num_workers}
 
@@ -405,6 +412,7 @@ class ExampleDataset(pl.LightningDataModule):
         base_list_start = [("load_image", {}),
                            ("add_channel", {}),
                            ("normalizeintensity", {"nonzero": True}),
+                           ("spatial_crop_samples", {"roi_size": (96,96,96), "num_samples": 3}),
                            ]
         base_list_end = [("bounding_boxes_generator", {"segmentation_mode": self.segmentation_mode,
                                                        "thresholds": self.seg_thresholds,

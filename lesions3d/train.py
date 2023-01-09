@@ -10,7 +10,6 @@ from ssd3d import *
 from pytorch_lightning.loggers import TensorBoardLogger, WandbLogger
 import pytorch_lightning as pl
 import wandb
-wandb.login()
 import pickle
 import time
 from datetime import datetime
@@ -71,6 +70,7 @@ parser.add_argument('-coms', '--comments', type=str, default="", help="optional 
 
 # Get the hyperparameters
 args = parser.parse_args()
+wandb.login()
 try:
     wandb.finish()
 except:

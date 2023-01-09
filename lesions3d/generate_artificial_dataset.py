@@ -90,9 +90,9 @@ def generate_image(image_dir, seg_dir, idx, n_classes, noise=add_noise):
     mask = np.zeros_like(data)
     borders = np.zeros_like(data)
 
-    n_objects = np.random.randint(*num_objects)
+    n_objects = np.random.randint(*num_objects) if num_objects != [0, 0] else 0
 
-    for obj_idx in range(n_objects + 1):
+    for obj_idx in range(n_objects):
 
         selected_size = np.random.randint(object_size[0], object_size[1])
         selected_class = np.random.randint(0, n_classes)
