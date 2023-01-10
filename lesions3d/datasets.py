@@ -10,7 +10,7 @@ import torch
 import os
 # from os.path import exists as pexists
 from os.path import join as pjoin
-from utils import BoundingBoxesGeneratord, Printer, ShowImage, CustomRandCropByPosNegLabeld
+from utils import BoundingBoxesGeneratord, Printer, ShowImage
 from random import randint
 from monai.data import Dataset, CacheDataset, DataLoader
 from monai.transforms import (
@@ -33,6 +33,7 @@ from monai.transforms import (
     RandScaleIntensityd,
     RandAffined,
     RandSpatialCropSamplesd,
+    RandCropByPosNegLabeld,
     Spacingd,
 )
 import numpy as np
@@ -119,7 +120,7 @@ def get_transform_from_name(name, **kwargs):
         "spacing": (Spacingd, ["img", "seg"]),
         "fgbg_to_indices": (FgBgToIndicesd, ["seg"]),
         "spatial_crop_samples": (RandSpatialCropSamplesd, ["img", "seg"]),
-
+        "crop_by_pos_neg": (RandCropByPosNegLabeld, ["img", "seg"]),
     }
 
     transform, keys = TRANSFORMS[name]
@@ -412,7 +413,7 @@ class ExampleDataset(pl.LightningDataModule):
         base_list_start = [("load_image", {}),
                            ("add_channel", {}),
                            ("normalizeintensity", {"nonzero": True}),
-                           #("spatial_crop_samples", {"roi_size": (96,96,96), "num_samples": 3}),
+                           ("crop_by_pos_neg", {"pos": 1, "neg": 10, "label_key": "seg", "spatial_size": (64,64,64)}),
                            ]
         base_list_end = [("bounding_boxes_generator", {"segmentation_mode": self.segmentation_mode,
                                                        "thresholds": self.seg_thresholds,

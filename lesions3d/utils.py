@@ -181,7 +181,8 @@ def compute_metrics_per_class(det_class_images, det_class_boxes, det_class_score
     """
     # Keep track of which true objects with this class have already been 'detected'
     # So far, none
-    true_class_boxes_detected = torch.zeros((true_class_difficulties.size(0)), dtype=torch.uint8).to(device)  # (n_class_objects)
+    true_class_boxes_detected = torch.zeros((true_class_difficulties.size(0)), dtype=torch.uint8).to(
+        device)  # (n_class_objects)
 
     n_class_detections = det_class_boxes.size(0)
 
@@ -228,7 +229,8 @@ def compute_metrics_per_class(det_class_images, det_class_boxes, det_class_score
         # Otherwise, the detection occurs in a different location than the actual object, and is a false positive
         else:
             false_positives[d] = 1
-    class_boxes_volumes = torch.FloatTensor([volume(b) for i, b in enumerate(true_class_boxes) if not true_class_difficulties[i]]).to(device)
+    class_boxes_volumes = torch.FloatTensor(
+        [volume(b) for i, b in enumerate(true_class_boxes) if not true_class_difficulties[i]]).to(device)
     # try:
     class_found_boxes_volumes = class_boxes_volumes[true_class_boxes_detected == 1]
     class_not_found_boxes_volumes = class_boxes_volumes[true_class_boxes_detected == 0]
@@ -264,7 +266,8 @@ def calculate_mAP(det_boxes, det_labels, det_scores, true_boxes, true_labels, tr
     true_images = list()
     for i in range(len(true_labels)):
         true_images.extend([i] * true_labels[i].size(0))
-    true_images = torch.LongTensor(true_images).to(device)  # (n_objects), n_objects is the total no. of objects across all images
+    true_images = torch.LongTensor(true_images).to(
+        device)  # (n_objects), n_objects is the total no. of objects across all images
     true_boxes = torch.cat(true_boxes, dim=0)  # (n_objects, 6)
     true_labels = torch.cat(true_labels, dim=0)  # (n_objects)
     true_difficulties = torch.cat(true_difficulties, dim=0)  # (n_objects)
@@ -311,7 +314,7 @@ def calculate_mAP(det_boxes, det_labels, det_scores, true_boxes, true_labels, tr
 
         metrics = compute_metrics_per_class(det_class_images, det_class_boxes, det_class_scores,
                                             true_class_images, true_class_boxes, true_class_difficulties, min_overlap)
-        class_true_positives, class_false_positives, true_class_boxes_detected, det_class_scores_sorted,\
+        class_true_positives, class_false_positives, true_class_boxes_detected, det_class_scores_sorted, \
             class_found_boxes_volumes, class_not_found_boxes_volumes = metrics
 
         true_positives_per_class[c] = class_true_positives
@@ -323,13 +326,16 @@ def calculate_mAP(det_boxes, det_labels, det_scores, true_boxes, true_labels, tr
 
         class_false_negatives = 1 - true_class_boxes_detected
         recalls_per_class[c] = class_true_positives.sum() / (class_true_positives.sum() + class_false_negatives.sum())
-        precisions_per_class[c] = class_true_positives.sum() / (class_true_positives.sum() + class_false_positives.sum())
-        f1_scores_per_class[c] = (2 * precisions_per_class[c] * recalls_per_class[c]) / (precisions_per_class[c] + recalls_per_class[c])
+        precisions_per_class[c] = class_true_positives.sum() / (
+                class_true_positives.sum() + class_false_positives.sum())
+        f1_scores_per_class[c] = (2 * precisions_per_class[c] * recalls_per_class[c]) / (
+                precisions_per_class[c] + recalls_per_class[c])
 
         # Compute cumulative precision and recall at each detection in the order of decreasing scores
         cumul_true_positives = torch.cumsum(class_true_positives, dim=0)  # (n_class_detections)
         cumul_false_positives = torch.cumsum(class_false_positives, dim=0)  # (n_class_detections)
-        cumul_precision = cumul_true_positives / (cumul_true_positives + cumul_false_positives + 1e-10)  # (n_class_detections)
+        cumul_precision = cumul_true_positives / (
+                cumul_true_positives + cumul_false_positives + 1e-10)  # (n_class_detections)
         cumul_recall = cumul_true_positives / n_easy_class_objects  # (n_class_detections)
 
         # Find the mean of the maximum of the precisions corresponding to recalls above the threshold 't'
@@ -350,7 +356,6 @@ def calculate_mAP(det_boxes, det_labels, det_scores, true_boxes, true_labels, tr
     # f1_score_per_class = {c: 2*(prec * recalls_per_class[c])/(prec + recalls_per_class[c])
     #                       for c, prec in true_positives_per_class.items()}
 
-
     # Calculate Mean Average Precision (mAP)
     mean_average_precision = average_precisions.mean().item()
 
@@ -368,7 +373,7 @@ def calculate_mAP(det_boxes, det_labels, det_scores, true_boxes, true_labels, tr
             not_found_boxes_volumes_per_class = not_found_boxes_volumes_per_class[1]
             true_positives_per_class = true_positives_per_class[1]
             false_positives_per_class = false_positives_per_class[1]
-        except KeyError: # no detected objects
+        except KeyError:  # no detected objects
             recalls_per_class = 0.
             precisions_per_class = 0.
             f1_scores_per_class = 0.
@@ -383,18 +388,19 @@ def calculate_mAP(det_boxes, det_labels, det_scores, true_boxes, true_labels, tr
     if not return_detail:
         return average_precisions, mean_average_precision
     else:
-        return {"APs":                                  average_precisions,
-                "mAP":                                  mean_average_precision,
-                "precision":                            precisions_per_class,
-                "recall":                               recalls_per_class,
-                "f1_score" :                            f1_scores_per_class,
-                "sorted_det_scores" :                   sorted_scores_per_class,
-                "TP" :                                  true_positives_per_class,
-                "FP" :                                  false_positives_per_class,
-                "n_true_boxes":                         true_boxes_detected_per_class.size(0),
-                "found_boxes_volumes_per_class":        found_boxes_volumes_per_class,
-                "not_found_boxes_volumes_per_class":    not_found_boxes_volumes_per_class,
+        return {"APs": average_precisions,
+                "mAP": mean_average_precision,
+                "precision": precisions_per_class,
+                "recall": recalls_per_class,
+                "f1_score": f1_scores_per_class,
+                "sorted_det_scores": sorted_scores_per_class,
+                "TP": true_positives_per_class,
+                "FP": false_positives_per_class,
+                "n_true_boxes": true_boxes_detected_per_class.size(0),
+                "found_boxes_volumes_per_class": found_boxes_volumes_per_class,
+                "not_found_boxes_volumes_per_class": not_found_boxes_volumes_per_class,
                 }
+
 
 class BoundingBoxesGeneratord(MapTransform, InvertibleTransform):
     def __init__(self,
@@ -688,84 +694,113 @@ def show_multiple_images(list_of_images, slice, dim, titles=[], plt_title=""):
 
     plt.show()
 
-class CustomRandCropByPosNegLabeld(RandCropByPosNegLabeld):
+
+def compute_volumes(arr: np.ndarray, background_label: float) -> dict:
     """
-    Custom version of the dictionary-based version of :py:class:`monai.transforms.RandCropByPosNegLabel`.
-    Crop random fixed sized regions with the center being a foreground or background voxel
-    based on the Pos Neg Ratio.
-    Suppose all the expected fields specified by `keys` have same shape,
-    and add `patch_index` to the corresponding metadata.
-    And will return a list of dictionaries for all the cropped images.
+    This function takes a 3D numpy array and computes the volume of bounding box
+    for every connected component object segmented with different labels.
 
-    If a dimension of the expected spatial size is larger than the input image size,
-    will not crop that dimension. So the cropped result may be smaller than the expected size,
-    and the cropped results of several images may not have exactly the same shape.
-    And if the crop ROI is partly out of the image, will automatically adjust the crop center
-    to ensure the valid crop ROI.
+    Parameters:
+        arr (np.ndarray): 3D numpy array containing several connected components objects segmented with a different label
 
-    The main difference with RandCropByPosNegLabeld is that this version first categorizes the foreground
-    and background voxels before sampling the crop center.
+    Returns:
+        volumes (dict): A dictionary where the keys are the labels in the array,
+        and the values are the volumes of the bounding boxes of the connected components with that label.
+    """
+    volumes = dict()
+    labels = np.unique(arr)
+    for lbl in labels[labels != background_label]:
+        indices = np.argwhere(np.squeeze(arr) == lbl)  # get the indices of the points with the current label
+        min_indices = indices.min(axis=0)  # compute the minimum indices
+        max_indices = indices.max(axis=0)  # compute the maximum indices
+        vol = (max_indices - min_indices).prod()  # compute the volume of the box
+        volumes[lbl] = vol
+    return volumes
 
-    Args:
-        keys: keys of the corresponding items to be transformed.
-            See also: :py:class:`monai.transforms.compose.MapTransform`
-        label_key: name of key for label image, this will be used for finding foreground/background.
-        spatial_size: the spatial size of the crop region e.g. [224, 224, 128].
-            if a dimension of ROI size is larger than image size, will not crop that dimension of the image.
-            if its components have non-positive values, the corresponding size of `data[label_key]` will be used.
-            for example: if the spatial size of input data is [40, 40, 40] and `spatial_size=[32, 64, -1]`,
-            the spatial size of output data will be [32, 40, 40].
-        pos: used with `neg` together to calculate the ratio ``pos / (pos + neg)`` for the probability
-            to pick a foreground voxel as a center rather than a background voxel.
-        neg: used with `pos` together to calculate the ratio ``pos / (pos + neg)`` for the probability
-            to pick a foreground voxel as a center rather than a background voxel.
-        num_samples: number of samples (crop regions) to take in each list.
-        image_key: if image_key is not None, use ``label == 0 & image > image_threshold`` to select
-            the negative sample(background) center. so the crop center will only exist on valid image area.
-        image_threshold: if enabled image_key, use ``image > image_threshold`` to determine
-            the valid image content area.
-        fg_indices_key: if provided pre-computed foreground indices of `label`, will ignore above `image_key` and
-            `image_threshold`, and randomly select crop centers based on them, need to provide `fg_indices_key`
-            and `bg_indices_key` together, expect to be 1 dim array of spatial indices after flattening.
-            a typical usage is to call `FgBgToIndicesd` transform first and cache the results.
-        bg_indices_key: if provided pre-computed background indices of `label`, will ignore above `image_key` and
-            `image_threshold`, and randomly select crop centers based on them, need to provide `fg_indices_key`
-            and `bg_indices_key` together, expect to be 1 dim array of spatial indices after flattening.
-            a typical usage is to call `FgBgToIndicesd` transform first and cache the results.
-        allow_smaller: if `False`, an exception will be raised if the image is smaller than
-            the requested ROI in any dimension. If `True`, any smaller dimensions will be set to
-            match the cropped size (i.e., no cropping in that dimension).
-        allow_missing_keys: don't raise exception if key is missing.
 
-    Raises:
-        ValueError: When ``pos`` or ``neg`` are negative.
-        ValueError: When ``pos=0`` and ``neg=0``. Incompatible values.
+class ComputeVolumes(MapTransform, InvertibleTransform):
+    """
+    Compute volumes of the ground truth boxes.
 
     """
+
     def __init__(
-        self,
-        keys: KeysCollection,
-        label_key: str,
-        spatial_size: Union[Sequence[int], int],
-        pos: float = 1.0,
-        neg: float = 1.0,
-        num_samples: int = 1,
-        image_key: Optional[str] = None,
-        image_threshold: float = 0.0,
-        meta_keys: Optional[KeysCollection] = None,
-        meta_key_postfix: str = "meta_dict",
-        allow_smaller: bool = False,
-        allow_missing_keys: bool = False,
+            self,
+            keys: KeysCollection,
+            background_label: float = 0.,
+            allow_missing_keys: bool = False,
     ) -> None:
-        super().__init__(keys, label_key, spatial_size, pos, neg, num_samples, image_key, image_threshold,
-            None, None, meta_keys, meta_key_postfix, allow_smaller, allow_missing_keys)
+        super().__init__(keys, allow_missing_keys)
+        self.keys = keys
+        self.allow_missing_keys = allow_missing_keys
+        self.background_label = background_label
 
-    def __call__(self, data: Mapping[Hashable, torch.Tensor]) -> List[Dict[Hashable, torch.Tensor]]:
-        find_fg_bg_indices = FgBgToIndices(image_threshold=-0.1)
-        self.fg_indices_key, self.bg_indices_key = find_fg_bg_indices(data["seg"])
+    def __call__(self, data: Mapping[Hashable, NdarrayOrTensor]) -> Dict[Hashable, NdarrayOrTensor]:
+        d = dict(data)
 
-        return super.__call__(data)
+        for key in self.key_iterator(d):
+            self.push_transform(d, key)
+            if "boxes_volumes" not in d:
+                d["boxes_volumes"] = dict()
+            d["boxes_volumes"].update(compute_volumes(d[key], self.background_label))
 
+        return d
+
+    def inverse(self, data: dict) -> dict:
+        d = deepcopy(dict(data))
+        for key in self.key_iterator(d):
+            # Do nothing
+            self.pop_transform(d, key)
+        return d
+
+
+class RemoveBoxesByVolumePercentage(MapTransform, InvertibleTransform):
+    """
+    Remove boxes with a volume percentage below a threshold.
+
+    """
+
+    def __init__(
+            self,
+            keys: KeysCollection,
+            threshold: float,
+            background_label: float = 0.0,
+            allow_missing_keys: bool = False,
+    ) -> None:
+        super().__init__(keys, allow_missing_keys)
+        self.threshold = threshold
+        self.keys = keys
+        self.allow_missing_keys = allow_missing_keys
+        self.background_label = background_label
+
+    def __call__(self, data: Mapping[Hashable, NdarrayOrTensor]) -> Dict[Hashable, NdarrayOrTensor]:
+        d = dict(data)
+
+        for key in self.key_iterator(d):
+            self.push_transform(d, key)
+            d[key], deleted_labels = self.remove_boxes_by_volume_percentage(d[key], d["boxes_volumes"])
+            if "deleted_labels" not in d:
+                d["deleted_labels"] = list()
+            d["deleted_labels"] += deleted_labels
+        d["deleted_labels"].sort()
+        return d
+
+    def remove_boxes_by_volume_percentage(self, seg, orig_volumes):
+        deleted_labels = []
+        volumes = compute_volumes(seg, self.background_label)
+        volume_percentages = {lbl: vol / orig_volumes[lbl] for lbl, vol in volumes.items()}
+        for lbl, perc in volume_percentages.items():
+            if perc < self.threshold:
+                seg[seg == lbl] = self.background_label
+                deleted_labels.append(lbl)
+        return seg, deleted_labels
+
+    def inverse(self, data: dict) -> dict:
+        d = deepcopy(dict(data))
+        for key in self.key_iterator(d):
+            # Do nothing
+            self.pop_transform(d, key)
+        return d
 
 
 class ShowImage(MapTransform, InvertibleTransform):
