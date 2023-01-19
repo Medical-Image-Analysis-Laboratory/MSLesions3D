@@ -762,7 +762,7 @@ class MultiBoxLoss(nn.Module):
         self.alpha = alpha
 
         self.smooth_l1 = nn.L1Loss()
-        self.classification_loss = 'focal' #classification_loss
+        self.classification_loss = classification_loss
         if self.classification_loss == 'crossentropy':
             self.clf_loss = nn.CrossEntropyLoss(reduction='none')
         elif self.classification_loss == 'focal':
