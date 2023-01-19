@@ -211,7 +211,7 @@ class LSSD3D(pl.LightningModule):
         self.input_channels = input_channels
         self.width_mult = width_mult
         self.aspect_ratios = aspect_ratios
-        self.boxes_per_location=2
+        self.boxes_per_location=boxes_per_location
 
         self.n_classes = n_classes
         self._make_base_and_prediction_layers()

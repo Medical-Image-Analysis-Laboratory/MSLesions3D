@@ -44,6 +44,8 @@ parser.add_argument('-lr', '--learning_rate', type=float, default=0.001, help="t
 parser.add_argument('-sr', '--scheduler', type=str, default="CosineAnnealingLR", help="learning rate scheduler")
 parser.add_argument('-a', '--augmentations', type=str, nargs='*', default=["flip", "rotate90d", "translate"])
 parser.add_argument('-ld', '--logdir', type=str, default=r'../logs/artificial_dataset')
+parser.add_argument('-cl', '--classification_loss', type=str, default=r'crossentropy', help="classification loss",
+                    choices=['focal', 'crossentropy'],)
 parser.add_argument('-c', '--cache', type=int, default=0, help="whether to cache the dataset or not")
 parser.add_argument('-nw', '--num_workers', type=int, default=8, help="number of workers for the dataset")
 parser.add_argument('-en', '--experiment_name', type=str, default="multiple_subjects_64",
@@ -195,7 +197,8 @@ def example():
                    min_object_size=args.min_object_size,
                    max_object_size=args.max_object_size,
                    base_network_config=args.base_network_config,
-                   boxes_per_location=args.boxes_per_location)
+                   boxes_per_location=args.boxes_per_location,
+                   classification_loss=args.classification_loss,)
     model.init()
 
     train_loader = dataset.train_dataloader()
