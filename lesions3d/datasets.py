@@ -481,7 +481,7 @@ class ExampleDataset(pl.LightningDataModule):
             return list_of_transforms
 
         if self.patch_size != self.image_size: # patching if needed
-            base_list_start =  base_list_start + [("crop_by_pos_neg", {"pos": 1, "neg": 10, "label_key": "seg",
+            base_list_start =  base_list_start + [("crop_by_pos_neg", {"pos": 1, "neg": 7, "label_key": "seg",
                                                                        "spatial_size": self.patch_size})]
 
         base_list_end = [("bounding_boxes_generator", {"segmentation_mode": self.segmentation_mode,

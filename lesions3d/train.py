@@ -41,7 +41,7 @@ parser.add_argument('-psi', '--patch_size', type=int, default=[64, 64, 64], narg
 parser.add_argument('-b', '--batch_size', type=int, default=8, help="training batch size")
 parser.add_argument('-lr', '--learning_rate', type=float, default=0.001, help="training learning rate")
 parser.add_argument('-sr', '--scheduler', type=str, default="CosineAnnealingLR", help="learning rate scheduler")
-parser.add_argument('-a', '--augmentations', type=str, nargs='*', demin_object_sizefault=["flip", "rotate90d", "translate"])
+parser.add_argument('-a', '--augmentations', type=str, nargs='*', default=["flip", "rotate90d", "translate"])
 parser.add_argument('-ld', '--logdir', type=str, default=r'../logs/artificial_dataset')
 parser.add_argument('-c', '--cache', type=int, default=0, help="whether to cache the dataset or not")
 parser.add_argument('-nw', '--num_workers', type=int, default=8, help="number of workers for the dataset")
@@ -172,6 +172,7 @@ def example():
                              image_size=args.image_size,
                              patch_size=args.patch_size,)
     dataset.setup(stage="fit")
+    breakpoint()
     input_size = tuple(dataset.train_dataset[0]["img"].shape)[1:]
 
     model = LSSD3D(n_classes=args.n_classes + 1,
