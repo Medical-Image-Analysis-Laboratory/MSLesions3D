@@ -38,7 +38,8 @@ parser.add_argument('-imsi', '--image_size', type=int, default=[250, 250, 250], 
 parser.add_argument('-psi', '--patch_size', type=int, default=[64, 64, 64], nargs='+',
                     help="size of the cropped patches to use for training")
 
-parser.add_argument('-b', '--batch_size', type=int, default=8, help="training batch size")
+parser.add_argument('-b', '--batch_size', type=int, default=4, help="training batch size")
+parser.add_argument('-ns', '--num_samples', type=int, default=8, help="how many samples to retrieve from 1 subject")
 parser.add_argument('-lr', '--learning_rate', type=float, default=0.001, help="training learning rate")
 parser.add_argument('-sr', '--scheduler', type=str, default="CosineAnnealingLR", help="learning rate scheduler")
 parser.add_argument('-a', '--augmentations', type=str, nargs='*', default=["flip", "rotate90d", "translate"])
@@ -163,6 +164,7 @@ def example():
                              objects="multiple",
                              verbose=bool(args.verbose),
                              batch_size=args.batch_size,
+                             num_samples=args.num_samples,
                              augmentations=augmentations,
                              data_dir=args.dataset_path,
                              dataset_name=args.dataset_name,
@@ -181,7 +183,7 @@ def example():
                    lr=args.learning_rate,
                    width_mult=args.width_mult,
                    scheduler=args.scheduler,
-                   batch_size=args.batch_size,
+                   batch_size=args.batch_size*args.num_samples,
                    comments=args.comments,
                    input_size=input_size,
                    compute_metric_every_n_epochs=args.compute_metric_every_n_epochs,
