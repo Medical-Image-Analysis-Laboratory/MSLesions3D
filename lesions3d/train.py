@@ -172,8 +172,9 @@ def example():
                              image_size=args.image_size,
                              patch_size=args.patch_size,)
     dataset.setup(stage="fit")
-    breakpoint()
-    input_size = tuple(dataset.train_dataset[0]["img"].shape)[1:]
+    dummy_input = dataset.train_dataset[0]
+    dummy_input = dummy_input if type(dummy_input) == dict else dummy_input[0]
+    input_size = tuple(dummy_input["img"].shape)[1:]
 
     model = LSSD3D(n_classes=args.n_classes + 1,
                    input_channels=1,

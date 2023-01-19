@@ -69,12 +69,13 @@ def collate_fn(batch):
     seg_transforms = list()
     img_transforms = list()
 
-    for b in batch:
-        if not "boxes" in b.keys():
+    def add_data_to_lists(b):
+        if "boxes" not in b.keys():
             batch_imgs, [batch_boxes, batch_labels] = b["img"], b['seg']
         else:
             batch_imgs = b["img"]
             batch_boxes, batch_labels = b["boxes"], b["labels"]
+
         images.append(batch_imgs)
         boxes.append(batch_boxes)
         labels.append(batch_labels)
@@ -83,6 +84,13 @@ def collate_fn(batch):
         seg_meta_dicts.append(b["seg_meta_dict"])
         seg_transforms.append(b["seg_transforms"])
         img_transforms.append(b["img_transforms"])
+
+    for b in batch:
+        if type(b) == dict:
+            add_data_to_lists(b)
+        else: # type(b) == list
+            for b2 in b:
+                add_data_to_lists(b2)
 
     images = torch.stack(images, dim=0)
 
@@ -410,8 +418,9 @@ class ExampleDataset(pl.LightningDataModule):
                  seg_filename="seg",
                  segmentation_mode="classes",
                  seg_thresholds=None,
-                 image_size=(64,64,64),
+                 image_size=None,
                  patch_size=None,
+                 num_samples=1,
                  data_dir="/home/wynen/PycharmProjects/MSLesions3D/data/artificial_dataset"):
 
         super().__init__()
@@ -430,6 +439,7 @@ class ExampleDataset(pl.LightningDataModule):
         self.data_dir = self.data_dir if dataset_name is None else pjoin(self.data_dir, dataset_name)
 
         self.batch_size = batch_size
+        self.num_samples = num_samples
         self.num_workers = num_workers
         self.random_state = random_state
         self.cache = cache
@@ -468,12 +478,12 @@ class ExampleDataset(pl.LightningDataModule):
         """
         base_list_start = [("load_image", {}),
                             ("add_channel", {}),
-                            ("normalizeintensity", {"nonzero": True}),
-                            ("to_tensor", {})]
+                            ("normalizeintensity", {"nonzero": True}),]
 
         list_of_transforms = list()
 
         if mode == "predict":
+            base_list_start += [("to_tensor", {})]
             for t_name, kwargs in base_list_start:
                 if self.verbose: list_of_transforms.append(Lambdad(keys=["img"], func=Printer(t_name)))
                 list_of_transforms.append(get_transform_from_name(t_name, **kwargs))
@@ -481,8 +491,8 @@ class ExampleDataset(pl.LightningDataModule):
             return list_of_transforms
 
         if self.patch_size != self.image_size: # patching if needed
-            base_list_start =  base_list_start + [("crop_by_pos_neg", {"pos": 1, "neg": 7, "label_key": "seg",
-                                                                       "spatial_size": self.patch_size})]
+            base_list_start += [("crop_by_pos_neg", {"pos": 1, "neg": 7, "label_key": "seg",
+                                                     "spatial_size": self.patch_size, "num_samples": self.num_samples})]
 
         base_list_end = [("bounding_boxes_generator", {"segmentation_mode": self.segmentation_mode,
                                                        "thresholds": self.seg_thresholds,
@@ -586,9 +596,10 @@ class ExampleDataset(pl.LightningDataModule):
 
 if __name__ == '__main__':
     pass
-    ds = ExampleDataset(dataset_name="#3k_64_n1-5_s6-14", verbose=False, num_workers=1, batch_size=1)
-    ds.setup("predict")
-    dl = ds.predict_test_dataloader()
+    ds = ExampleDataset(data_dir="/home/wynen/data/test", seg_filename="labels", segmentation_mode="instances",
+                        patch_size=(96, 96, 96), verbose=False, num_workers=1, batch_size=3, num_samples=7)
+    ds.setup("fit")
+    dl = ds.train_dataloader()
     for b in dl:
         break
     print(b)
