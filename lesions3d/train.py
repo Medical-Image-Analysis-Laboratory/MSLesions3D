@@ -10,9 +10,6 @@ from ssd3d import *
 from pytorch_lightning.loggers import TensorBoardLogger, WandbLogger
 import pytorch_lightning as pl
 import wandb
-import pickle
-import time
-from datetime import datetime
 import argparse
 import json
 from os.path import join as pjoin
@@ -32,14 +29,32 @@ parser.add_argument('-sm', '--seg_mode', type=str, help="segmentation mode ('ins
                     default="classes")
 parser.add_argument('-st', '--seg_thresholds', type=int, help="segmentation thresholds (in case of seg_mode being "
                                                               "'instances')", default=None, nargs='*')
+parser.add_argument('--n_classes', type=int, default=1, help="number of classes in dataset")
 parser.add_argument('-su', '--subject', type=str, default=None,
                     help="if training has to be done on 1 subject, specify its id")  # Set default to None
 parser.add_argument('-p', '--percentage', type=float, default=1., help="percentage of the whole dataset to train on")
-parser.add_argument('--n_classes', type=int, default=1, help="number of classes in dataset")
+parser.add_argument('-imsi', '--image_size', type=int, default=[250, 250, 250], nargs='+',
+                    help="size of the images to use for training")
+parser.add_argument('-psi', '--patch_size', type=int, default=[64, 64, 64], nargs='+',
+                    help="size of the cropped patches to use for training")
+
 parser.add_argument('-b', '--batch_size', type=int, default=8, help="training batch size")
 parser.add_argument('-lr', '--learning_rate', type=float, default=0.001, help="training learning rate")
 parser.add_argument('-sr', '--scheduler', type=str, default="CosineAnnealingLR", help="learning rate scheduler")
+parser.add_argument('-a', '--augmentations', type=str, nargs='*', demin_object_sizefault=["flip", "rotate90d", "translate"])
+parser.add_argument('-ld', '--logdir', type=str, default=r'../logs/artificial_dataset')
+parser.add_argument('-c', '--cache', type=int, default=0, help="whether to cache the dataset or not")
+parser.add_argument('-nw', '--num_workers', type=int, default=8, help="number of workers for the dataset")
+parser.add_argument('-en', '--experiment_name', type=str, default="multiple_subjects_64",
+                    help="experiment name for tensorboard logdir")
+parser.add_argument('-wb', '--use_wandb', type=int, default=1, help="whether to use weights and biases as logging tool")
+parser.add_argument('-me', '--max_epochs', type=int, default=None, help="maximum number of epochs")
+parser.add_argument('-mi', '--max_iterations', type=int, default=4000, help="maximum number of iterations")
+parser.add_argument('-cp', '--checkpoint', type=str, default=None, help="path to model to load if resuming training")
+parser.add_argument('-es', '--early_stopping', type=int, default=1, help="whether to use early stopping or not")
+
 parser.add_argument('-th', '--threshold', type=float, default=[0.1,0.2], nargs='+', help="training IoU threshold for box matching (cf Amemiya 2021)")
+parser.add_argument('-wm', '--width_mult', type=float, default=1., help="width multiplicator (MobileNet)")
 parser.add_argument('-pl', '--prediction_layers', type=str, default="3 5 7", help="feature maps on which to do the prediction convolutions.")
 parser.add_argument('-cfg', '--base_network_config', type=str, default="mobilenet", help="base network configuration")
 parser.add_argument('-sc', '--scales', type=json.loads, default="{}", help="Object scales per layer")
@@ -50,21 +65,12 @@ parser.add_argument('-maxos', '--max_object_size', type=int, default=14,
                     help="Minimum size for an object (for computation of scales). Not taken into account if scales argument is set.")
 parser.add_argument('--alpha', type=int, default=1.,
                     help="alpha parameter for the multibox loss (= confidence loss + alpha * localization loss)")
-parser.add_argument('-a', '--augmentations', type=str, nargs='*', default=["flip", "rotate90d", "translate"])
-parser.add_argument('-ld', '--logdir', type=str, default=r'../logs/artificial_dataset')
-parser.add_argument('-c', '--cache', type=int, default=0, help="whether to cache the dataset or not")
-parser.add_argument('-nw', '--num_workers', type=int, default=8, help="number of workers for the dataset")
-parser.add_argument('-wm', '--width_mult', type=float, default=1., help="width multiplicator (MobileNet)")
-parser.add_argument('-en', '--experiment_name', type=str, default="multiple_subjects_64",
-                    help="experiment name for tensorboard logdir")
-parser.add_argument('-wb', '--use_wandb', type=int, default=1, help="whether to use weights and biases as logging tool")
-parser.add_argument('-me', '--max_epochs', type=int, default=None, help="maximum number of epochs")
-parser.add_argument('-mi', '--max_iterations', type=int, default=4000, help="maximum number of iterations")
-parser.add_argument('-cp', '--checkpoint', type=str, default=None, help="path to model to load if resuming training")
+
+
 parser.add_argument('-v', '--verbose', type=int, default=0, help="dataset verbose")
 parser.add_argument('-rs', '--seed', type=int, default=970205, help="random seed")
-parser.add_argument('-es', '--early_stopping', type=int, default=1, help="whether to use early stopping or not")
-parser.add_argument('-cm', '--compute_metric_every_n_epochs', type=int, default=1, help="compute the metric every n epochs")
+parser.add_argument('-cm', '--compute_metric_every_n_epochs', type=int, default=5, help="compute the metric every n epochs")
+
 parser.add_argument('-coms', '--comments', type=str, default="", help="optional comments on the present run")
 
 
@@ -93,7 +99,7 @@ print(args)
 print("Aspect ratios: ", aspect_ratios)
 print("Scales: ", scales)
 if args.max_epochs:
-    args.update({'max_iterations':-1}, allow_val_change=True)
+    args.update({'max_iterations': -1}, allow_val_change=True)
 
 
 def tune_lr():
@@ -149,19 +155,42 @@ def example():
     augmentations = [(n.replace("translate", "affine").replace("scale","affine"), i)
                      for n, i in augmentations if n in args.augmentations]
 
-    dataset = ExampleDataset(n_classes=args.n_classes, subject=args.subject, percentage=args.percentage,
-                             cache=args.cache, num_workers=args.num_workers, objects="multiple", verbose=bool(args.verbose),
-                             batch_size=args.batch_size, augmentations=augmentations, data_dir=args.dataset_path,
-                             dataset_name=args.dataset_name, seg_filename=args.seg_filename,
-                             segmentation_mode=args.seg_mode, seg_thresholds=args.seg_thresholds)
+    dataset = ExampleDataset(n_classes=args.n_classes,
+                             subject=args.subject,
+                             percentage=args.percentage,
+                             cache=args.cache,
+                             num_workers=args.num_workers,
+                             objects="multiple",
+                             verbose=bool(args.verbose),
+                             batch_size=args.batch_size,
+                             augmentations=augmentations,
+                             data_dir=args.dataset_path,
+                             dataset_name=args.dataset_name,
+                             seg_filename=args.seg_filename,
+                             segmentation_mode=args.seg_mode,
+                             seg_thresholds=args.seg_thresholds,
+                             image_size=args.image_size,
+                             patch_size=args.patch_size,)
     dataset.setup(stage="fit")
     input_size = tuple(dataset.train_dataset[0]["img"].shape)[1:]
 
-    model = LSSD3D(n_classes=args.n_classes + 1, input_channels=1, lr=args.learning_rate, width_mult=args.width_mult,
-                   scheduler=args.scheduler, batch_size=args.batch_size, comments=args.comments, input_size=input_size,
-                   compute_metric_every_n_epochs=5, use_wandb=args.use_wandb, aspect_ratios=aspect_ratios,
-                   scales=scales, alpha=args.alpha, threshold=args.threshold, min_object_size=args.min_object_size,
-                   max_object_size=args.max_object_size, base_network_config=args.base_network_config,
+    model = LSSD3D(n_classes=args.n_classes + 1,
+                   input_channels=1,
+                   lr=args.learning_rate,
+                   width_mult=args.width_mult,
+                   scheduler=args.scheduler,
+                   batch_size=args.batch_size,
+                   comments=args.comments,
+                   input_size=input_size,
+                   compute_metric_every_n_epochs=args.compute_metric_every_n_epochs,
+                   use_wandb=args.use_wandb,
+                   aspect_ratios=aspect_ratios,
+                   scales=scales,
+                   alpha=args.alpha,
+                   threshold=args.threshold,
+                   min_object_size=args.min_object_size,
+                   max_object_size=args.max_object_size,
+                   base_network_config=args.base_network_config,
                    boxes_per_location=args.boxes_per_location)
     model.init()
 
@@ -185,8 +214,13 @@ def example():
         print("Early stopping strategy")
         callbacks += [EarlyStopping('total_loss/validation', patience=5)]
 
-    trainer = pl.Trainer(accelerator="gpu", devices=1, max_epochs=args.max_epochs, max_steps=args.max_iterations,
-                         logger=logger, enable_progress_bar=True, log_every_n_steps=1,
+    trainer = pl.Trainer(accelerator="gpu",
+                         devices=1,
+                         max_epochs=args.max_epochs,
+                         max_steps=args.max_iterations,
+                         logger=logger,
+                         enable_progress_bar=True,
+                         log_every_n_steps=1,
                          callbacks=callbacks,
                          resume_from_checkpoint=args.checkpoint,
                          enable_checkpointing=True)

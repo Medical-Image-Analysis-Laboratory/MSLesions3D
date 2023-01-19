@@ -99,6 +99,39 @@ def collate_fn(batch):
     return batch_
 
 
+def collate_fn_predict(batch):
+    """
+        Collate fn for prediction (not taking the ground truth into account)
+
+        :param batch: an iterable of N sets from __getitem__()
+        :return: a dict of images, lists of varying-size tensors of bounding boxes, labels
+    """
+
+    images = list()
+    subjects = list()
+    img_meta_dicts = list()
+    img_transforms = list()
+
+    for b in batch:
+        if not "boxes" in b.keys():
+            batch_imgs = b["img"]
+        else:
+            batch_imgs = b["img"]
+        images.append(batch_imgs)
+        subjects.append(b["subject"])
+        img_meta_dicts.append(b["img_meta_dict"])
+        img_transforms.append(b["img_transforms"])
+
+    images = torch.stack(images, dim=0)
+
+    batch_ = {"img": images,
+              "subject": subjects,
+              "img_meta_dict": img_meta_dicts,
+              "img_transforms": img_transforms}
+
+    return batch_
+
+
 def get_transform_from_name(name, **kwargs):
     TRANSFORMS = {
         "load_image": (LoadImaged, ["img", "seg"]),
@@ -331,10 +364,10 @@ class LesionsDataModule(pl.LightningDataModule):
         return DataLoader(self.test_dataset, shuffle=False, collate_fn=collate_fn, **self.dl_dict)
 
     def predict_dataloader(self):
-        return DataLoader(self.test_dataset, shuffle=False, collate_fn=collate_fn, **self.dl_dict)
+        return DataLoader(self.test_dataset, shuffle=False, collate_fn=collate_fn_predict, **self.dl_dict)
 
     def predict_train_dataloader(self):
-        return DataLoader(self.predict_train_dataset, shuffle=False, collate_fn=collate_fn, **self.dl_dict)
+        return DataLoader(self.predict_train_dataset, shuffle=False, collate_fn=collate_fn_predict, **self.dl_dict)
 
     def all_dataloader(self):
         return DataLoader(self.all_dataset, shuffle=False, collate_fn=collate_fn, **self.dl_dict)
@@ -360,15 +393,33 @@ def stats_foreground(ds, show=False):
     return all_shapes, all_pixdims
 
 
-
 class ExampleDataset(pl.LightningDataModule):
-    def __init__(self, n_classes=1, objects="multiple", percentage=1., augmentations=None, batch_size=8,
-                 num_workers=int(os.cpu_count() / 2), verbose=False, show=False, random_state=970205, cache=False,
-                 subject=None, dataset_name=None, seg_filename="seg", segmentation_mode="classes", seg_thresholds=None,
+    def __init__(self,
+                 n_classes=1,
+                 objects="multiple",
+                 percentage=1.,
+                 augmentations=None,
+                 batch_size=8,
+                 num_workers=int(os.cpu_count() / 2),
+                 verbose=False,
+                 show=False,
+                 random_state=970205,
+                 cache=False,
+                 subject=None,
+                 dataset_name=None,
+                 seg_filename="seg",
+                 segmentation_mode="classes",
+                 seg_thresholds=None,
+                 image_size=(64,64,64),
+                 patch_size=None,
                  data_dir="/home/wynen/PycharmProjects/MSLesions3D/data/artificial_dataset"):
 
         super().__init__()
 
+        self.train_dataset = None
+        self.test_dataset = None
+        self.predict_train_dataset = None
+        self.predict_test_dataset = None
         assert n_classes == 1 or n_classes == 2
 
         self.data_dir = data_dir
@@ -382,7 +433,6 @@ class ExampleDataset(pl.LightningDataModule):
         self.num_workers = num_workers
         self.random_state = random_state
         self.cache = cache
-        # self.augment = augment
         self.percentage = percentage
         self.verbose = verbose
         self.segmentation_mode=segmentation_mode
@@ -398,30 +448,47 @@ class ExampleDataset(pl.LightningDataModule):
         self.subject = subject
         self.seg_filename = seg_filename
 
+        assert image_size or patch_size, "Either image_size or patch_size must be specified"
+        self.image_size = image_size
+        self.patch_size = patch_size if patch_size is not None else image_size
+
         self.train_transform_list = self.get_list_of_transforms("train")
         self.test_transform_list = self.get_list_of_transforms("test")
+        self.predict_transform_list = self.get_list_of_transforms("predict")
 
         self.train_transform = Compose(self.train_transform_list)
         self.test_transform = Compose(self.test_transform_list)
+        self.predict_transform = Compose(self.predict_transform_list)
 
         self.dl_dict = {'batch_size': self.batch_size, 'num_workers': self.num_workers}
 
     def get_list_of_transforms(self, mode):
         """
-        Return list of transforms for both train and test datasets
+        Return list of transforms for train, test or predict datasets
         """
         base_list_start = [("load_image", {}),
-                           ("add_channel", {}),
-                           ("normalizeintensity", {"nonzero": True}),
-                           ("crop_by_pos_neg", {"pos": 1, "neg": 10, "label_key": "seg", "spatial_size": (64,64,64)}),
-                           ]
+                            ("add_channel", {}),
+                            ("normalizeintensity", {"nonzero": True}),
+                            ("to_tensor", {})]
+
+        list_of_transforms = list()
+
+        if mode == "predict":
+            for t_name, kwargs in base_list_start:
+                if self.verbose: list_of_transforms.append(Lambdad(keys=["img"], func=Printer(t_name)))
+                list_of_transforms.append(get_transform_from_name(t_name, **kwargs))
+                if self.show: list_of_transforms.append(ShowImage(keys=["img", "seg"], dim=2, grid=True, msg=t_name))
+            return list_of_transforms
+
+        if self.patch_size != self.image_size: # patching if needed
+            base_list_start =  base_list_start + [("crop_by_pos_neg", {"pos": 1, "neg": 10, "label_key": "seg",
+                                                                       "spatial_size": self.patch_size})]
+
         base_list_end = [("bounding_boxes_generator", {"segmentation_mode": self.segmentation_mode,
                                                        "thresholds": self.seg_thresholds,
                                                        "n_classes": self.n_classes}),
                          ("to_tensor", {}),
                          ]
-
-        list_of_transforms = list()
 
         # First add the images, reorient them and make sure the channel is first
         for t_name, kwargs in base_list_start:
@@ -442,14 +509,16 @@ class ExampleDataset(pl.LightningDataModule):
                 list_of_transforms.append(get_transform_from_name(t_name, **kwargs))
                 if self.show: list_of_transforms.append(ShowImage(keys=["img", "seg"], dim=2, grid=True, msg=t_name))
 
-        # Add the final transformations
+        # Add the final transformations"#3k_64_n1-5_s6-14"
         for t_name, kwargs in base_list_end:
             if self.verbose: list_of_transforms.append(Lambdad(keys=["seg"], func=Printer(t_name)))
             list_of_transforms.append(get_transform_from_name(t_name, **kwargs))
 
         return list_of_transforms
 
-    def setup(self, stage=None):
+    def setup(self, stage=None, perform_split=True):
+        DS = CacheDataset if self.cache else Dataset
+
         if self.subject is not None:
             self.trainsubs, self.testsubs = [self.subject], [self.subject]
 
@@ -459,29 +528,40 @@ class ExampleDataset(pl.LightningDataModule):
             self.trainsubs, self.testsubs = [self.subjects_list[random_subj]], [self.subjects_list[random_subj]]
             # print(self.trainsubs, self.testsubs)
 
-        else:
+        elif perform_split:
             spl = train_test_split(self.subjects_list, train_size=0.8, test_size=0.2, random_state=self.random_state)
             self.trainsubs, self.testsubs = spl
 
-        DS = CacheDataset if self.cache else Dataset
+            data_train = [{'img': pjoin(self.data_dir, "images", f"sub-{s}_image.nii.gz"),
+                           'seg': pjoin(self.data_dir, "labels", f"sub-{s}_{self.seg_filename}.nii.gz"),
+                           'subject': s} for s in self.trainsubs]
+            data_test = [{'img': pjoin(self.data_dir, "images", f"sub-{s}_image.nii.gz"),
+                          'seg': pjoin(self.data_dir, "labels", f"sub-{s}_{self.seg_filename}.nii.gz"),
+                          'subject': s} for s in self.testsubs]
 
-        data_train = [{'img': pjoin(self.data_dir, "images", f"sub-{s}_image.nii.gz"),
-                       'seg': pjoin(self.data_dir, "labels", f"sub-{s}_{self.seg_filename}.nii.gz"),
-                       'subject': s} for s in self.trainsubs]
-        data_test = [{'img': pjoin(self.data_dir, "images", f"sub-{s}_image.nii.gz"),
-                      'seg': pjoin(self.data_dir, "labels", f"sub-{s}_{self.seg_filename}.nii.gz"),
-                      'subject': s} for s in self.testsubs]
+            if stage == "fit" or stage is None:
+                self.train_dataset = DS(data=data_train, transform=self.train_transform)
+                self.test_dataset = DS(data=data_test, transform=self.test_transform)
 
-        if stage == "fit" or stage is None:
-            self.train_dataset = DS(data=data_train, transform=self.train_transform)
-            self.test_dataset = DS(data=data_test, transform=self.test_transform)
+            elif stage == "test" or stage is None:
+                self.test_dataset = DS(data=data_test, transform=self.test_transform)
 
-        elif stage == "predict" or stage is None:
-            self.predict_train_dataset = DS(data=data_train, transform=self.test_transform)
-            self.predict_test_dataset = DS(data=data_test, transform=self.test_transform)
+            elif stage == "predict" or stage is None:
+                self.predict_train_dataset = DS(data=data_train, transform=self.predict_transform)
+                self.predict_test_dataset = DS(data=data_test, transform=self.predict_transform)
 
-        elif stage == "test" or stage is None:
-            self.test_dataset = DS(data=data_test, transform=self.test_transform)
+            else:
+                raise ValueError(f"Stage '{stage}' not recognized")
+
+        else: # If we don't want to perform a split in predict mode, we use the whole dataset
+            assert stage == "predict", "If you don't want to perform a split, you must be in predict mode"
+
+            self.predictsubs = self.subjects_list
+
+            data_predict = [{'img': pjoin(self.data_dir, "images", f"sub-{s}_image.nii.gz"),
+                             'subject': s} for s in self.predictsubs]
+
+            self.predict_dataset = DS(data=data_predict, transform=self.predict_transform)
 
     def train_dataloader(self):
         return DataLoader(self.train_dataset, batch_size=self.batch_size,
@@ -493,18 +573,23 @@ class ExampleDataset(pl.LightningDataModule):
 
     def predict_test_dataloader(self):
         return DataLoader(self.predict_test_dataset, batch_size=self.batch_size,
-                          shuffle=False, num_workers=self.num_workers, collate_fn=collate_fn)
+                          shuffle=False, num_workers=self.num_workers, collate_fn=collate_fn_predict)
 
     def predict_train_dataloader(self):
         return DataLoader(self.predict_train_dataset, batch_size=self.batch_size,
-                          shuffle=False, num_workers=self.num_workers, collate_fn=collate_fn)
+                          shuffle=False, num_workers=self.num_workers, collate_fn=collate_fn_predict)
+
+    def predict_dataloader(self):
+        return DataLoader(self.predict_dataset, batch_size=self.batch_size,
+                            shuffle=False, num_workers=self.num_workers, collate_fn=collate_fn_predict)
 
 
 if __name__ == '__main__':
     pass
-    import matplotlib.pyplot as plt
-    ds = ExampleDataset(subject="0000")
-    ds.setup("fit")
-    for b in ds.train_dataloader():
-        print(b)
+    ds = ExampleDataset(dataset_name="#3k_64_n1-5_s6-14", verbose=False, num_workers=1, batch_size=1)
+    ds.setup("predict")
+    dl = ds.predict_test_dataloader()
+    for b in dl:
+        break
+    print(b)
 
