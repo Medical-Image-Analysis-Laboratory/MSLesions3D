@@ -12,7 +12,7 @@ import yaml
 import os
 from os.path import exists as pexists
 from os.path import join as pjoin
-from utils import BoundingBoxesGeneratord, Printer, ShowImage, FilterEmptyImagesd
+from utils import BoundingBoxesGeneratord, Printer, ShowImage
 from random import randint
 from monai.data import Dataset, CacheDataset, DataLoader
 from monai.transforms import (
