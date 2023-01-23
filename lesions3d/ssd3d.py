@@ -725,7 +725,7 @@ class LSSD3D(pl.LightningModule):
             scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=40, verbose=False)
             return [optimizer], [scheduler]
         elif self.scheduler == "StepLR":
-            scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=20, gamma=0.1)
+            scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=7500, gamma=0.1)
             return [optimizer], [scheduler]
         else:
             return optimizer

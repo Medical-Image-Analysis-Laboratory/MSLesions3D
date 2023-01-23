@@ -393,7 +393,7 @@ class ObjectDetectionDataset(pl.LightningDataModule):
                  data_dir="/home/wynen/data/rimnet",
                  input_images=('FLAIR', 'acq-phase_T2star'),
                  metadata_file=None,
-                 ignored_ids_file="/home/wynen/data/rimnet/ignored_ids.json",
+                 ignored_ids_file=None,
                  skullstripped=False,
                  n_classes=1,
                  percentage=1.,
@@ -427,6 +427,8 @@ class ObjectDetectionDataset(pl.LightningDataModule):
         self.predict_subdir = predict_subdir
         self.input_images = input_images
         self.ignore_ids = []
+        if ignored_ids_file is None:
+            self.ignored_ids_file = os.path.join(self.data_dir, "ignored_ids.json")
         if not pexists(ignored_ids_file):
             print("No ignored_ids file found, ignoring no subjects")
         with open(ignored_ids_file, "r") as f:
