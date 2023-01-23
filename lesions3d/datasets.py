@@ -153,7 +153,6 @@ def get_transform_from_name(name, **kwargs):
         "add_channel_seg": (AddChanneld, ["seg"]),
         # "scale_intensity": (ScaleIntensityd, ['img']),
         "normalizeintensity": (NormalizeIntensityd, ["img"]),
-        "filter_empty_images": (FilterEmptyImagesd, ["img", "seg", "boxes", "labels"]),
         "crop_foreground": (CropForegroundd, ["img", "seg"]),
         "resize_with_pad_or_crop": (ResizeWithPadOrCropd, ['img', 'seg']),
         "bounding_boxes_generator": (BoundingBoxesGeneratord, ["seg"]),
