@@ -21,6 +21,7 @@ os.environ["CUDA_LAUNCH_BLOCKING"] = "1"
 torch.multiprocessing.set_sharing_strategy('file_system')
 
 parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+parser.add_argument('-wn', '--wandb_name', type=str, help="wandb run name", default=None)
 parser.add_argument('-d', '--dataset_path', type=str, help="path to dataset used for training and validation",
                     default=r'../data/artificial_dataset')
 parser.add_argument('-dn', '--dataset_name', type=str, help="name of dataset to use", default="#3k_64_n1-5_s6-14")
@@ -47,6 +48,10 @@ parser.add_argument('-b', '--batch_size', type=int, default=4, help="training ba
 parser.add_argument('-ns', '--num_samples', type=int, default=8, help="how many samples to retrieve from 1 subject")
 parser.add_argument('-lr', '--learning_rate', type=float, default=0.001, help="training learning rate")
 parser.add_argument('-sr', '--scheduler', type=str, default="CosineAnnealingLR", help="learning rate scheduler")
+parser.add_argument('-tmax', '--tmax', type=int, help="T_max argument for CosineAnnealingLR scheduler", default=40)
+parser.add_argument('-ss', '--step_size', type=int, help="step_size argument for StepLR scheduler", default=1000)
+parser.add_argument('-g', '--gamma', type=float, help="gamma argument for StepLR scheduler", default=0.5)
+
 parser.add_argument('-a', '--augmentations', type=str, nargs='*', default=["flip", "rotate90d", "translate"])
 parser.add_argument('-ld', '--logdir', type=str, default=r'../logs/artificial_dataset')
 parser.add_argument('-cl', '--classification_loss', type=str, default=r'crossentropy', help="classification loss",
@@ -93,6 +98,8 @@ except:
 wandb.init(config=args)
 # Access all hyperparameter values through wandb.config
 args = wandb.config
+if args.wandb_name:
+    wandb.run.name = args.wandb_name
 
 try:
     layers = [int(x) for x in args.prediction_layers.split()]
@@ -108,6 +115,11 @@ print("Aspect ratios: ", aspect_ratios)
 print("Scales: ", scales)
 if args.max_epochs:
     args.update({'max_iterations': -1}, allow_val_change=True)
+if args.seg_thresholds:
+    st = [(int(args.seg_thresholds[i]), int(args.seg_thresholds[i+1]) if i + 1 < len(args.seg_thresholds) else float('inf')) \
+            for i in range(0, len(args.seg_thresholds), 2)]
+    args.update({'seg_thresholds': st}, allow_val_change=True)
+    print(f"\n\nSeg_thresholds changed to: {args.seg_thresholds}\n\n")
 
 def example():
     pl.seed_everything(args.seed)
@@ -168,7 +180,10 @@ def example():
                    max_object_size=args.max_object_size,
                    base_network_config=args.base_network_config,
                    boxes_per_location=args.boxes_per_location,
-                   classification_loss=args.classification_loss,)
+                   classification_loss=args.classification_loss,
+                   t_max=args.tmax,
+                   step_size=args.step_size,
+                   gamma=args.gamma)
     model.init()
 
     train_loader = dataset.train_dataloader()
@@ -267,11 +282,14 @@ def train_lesions():
                    max_object_size=args.max_object_size,
                    base_network_config=args.base_network_config,
                    boxes_per_location=args.boxes_per_location,
-                   classification_loss=args.classification_loss,)
+                   classification_loss=args.classification_loss,
+                   t_max=args.tmax,
+                   step_size=args.step_size,
+                   gamma=args.gamma)
     model.init()
 
     train_loader = dataset.train_dataloader()
-    test_loader = dataset.test_dataloader()
+    val_loader = dataset.val_dataloader()
 
     logdir = args.logdir
     if not pexists(pjoin(logdir, args.experiment_name)):
@@ -301,10 +319,10 @@ def train_lesions():
                          resume_from_checkpoint=args.checkpoint,
                          enable_checkpointing=True)
 
-    trainer.fit(model=model, train_dataloaders=train_loader, val_dataloaders=test_loader)
+    trainer.fit(model=model, train_dataloaders=train_loader, val_dataloaders=val_loader)
 
 
 if __name__ == "__main__":
-    # train_lesions()
-    example()
+    train_lesions()
+    #example()
     pass

@@ -198,6 +198,9 @@ class LSSD3D(pl.LightningModule):
                  scales={},
                  boxes_per_location=2,
                  classification_loss='crossentropy', #or 'focal'
+                 t_max=None,
+                 step_size=None,
+                 gamma=None
                  ):
         super(LSSD3D, self).__init__()
 
@@ -225,6 +228,9 @@ class LSSD3D(pl.LightningModule):
         self.batch_size = batch_size
         self.compute_metric_every_n_epochs = compute_metric_every_n_epochs
         self.comments = comments
+        self.t_max = t_max
+        self.step_size = step_size
+        self.gamma = gamma
 
         if scales == {}:
             self.scales = {layer: scale for layer, scale in zip(self.aspect_ratios.keys(),
@@ -722,10 +728,10 @@ class LSSD3D(pl.LightningModule):
         optimizer = torch.optim.Adam(params=params, lr=self.lr, weight_decay=0.0005)
 
         if self.scheduler == "CosineAnnealingLR":
-            scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=40, verbose=False)
+            scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=self.t_max, verbose=False)
             return [optimizer], [scheduler]
         elif self.scheduler == "StepLR":
-            scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=7500, gamma=0.1)
+            scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=self.step_size, gamma=self.gamma)
             return [optimizer], [scheduler]
         else:
             return optimizer

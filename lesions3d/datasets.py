@@ -428,7 +428,7 @@ class ObjectDetectionDataset(pl.LightningDataModule):
         self.input_images = input_images
         self.ignore_ids = []
         if ignored_ids_file is None:
-            self.ignored_ids_file = os.path.join(self.data_dir, "ignored_ids.json")
+            ignored_ids_file = os.path.join(self.data_dir, "ignored_ids.json")
         if not pexists(ignored_ids_file):
             print("No ignored_ids file found, ignoring no subjects")
         with open(ignored_ids_file, "r") as f:
