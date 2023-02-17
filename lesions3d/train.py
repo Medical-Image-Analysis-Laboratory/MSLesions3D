@@ -16,12 +16,14 @@ from os.path import join as pjoin
 from os.path import exists as pexists
 from pytorch_lightning.callbacks import EarlyStopping
 from monai.utils import set_determinism
+import random
 os.environ["CUDA_LAUNCH_BLOCKING"] = "1"
 
 torch.multiprocessing.set_sharing_strategy('file_system')
 
 parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 parser.add_argument('-wn', '--wandb_name', type=str, help="wandb run name", default=None)
+parser.add_argument('-wp', '--wandb_project_name', type=str, help="wandb project name", default="PRL only")
 parser.add_argument('-d', '--dataset_path', type=str, help="path to dataset used for training and validation",
                     default=r'../data/artificial_dataset')
 parser.add_argument('-dn', '--dataset_name', type=str, help="name of dataset to use", default="#3k_64_n1-5_s6-14")
@@ -48,7 +50,7 @@ parser.add_argument('-b', '--batch_size', type=int, default=4, help="training ba
 parser.add_argument('-ns', '--num_samples', type=int, default=8, help="how many samples to retrieve from 1 subject")
 parser.add_argument('-lr', '--learning_rate', type=float, default=0.001, help="training learning rate")
 parser.add_argument('-sr', '--scheduler', type=str, default="CosineAnnealingLR", help="learning rate scheduler")
-parser.add_argument('-tmax', '--tmax', type=int, help="T_max argument for CosineAnnealingLR scheduler", default=40)
+# parser.add_argument('-tmax', '--tmax', type=int, help="T_max argument for CosineAnnealingLR scheduler", default=40)
 parser.add_argument('-ss', '--step_size', type=int, help="step_size argument for StepLR scheduler", default=1000)
 parser.add_argument('-g', '--gamma', type=float, help="gamma argument for StepLR scheduler", default=0.5)
 
@@ -81,7 +83,7 @@ parser.add_argument('--alpha', type=int, default=1.,
 
 
 parser.add_argument('-v', '--verbose', type=int, default=0, help="dataset verbose")
-parser.add_argument('-rs', '--seed', type=int, default=970205, help="random seed")
+parser.add_argument('-rs', '--seed', type=int, default=1, help="random seed")
 parser.add_argument('-cm', '--compute_metric_every_n_epochs', type=int, default=5, help="compute the metric every n epochs")
 
 parser.add_argument('-coms', '--comments', type=str, default="", help="optional comments on the present run")
@@ -95,7 +97,7 @@ try:
 except:
     print("WandB Not running. Initializing!")
 # Pass them to wandb.init
-wandb.init(config=args)
+wandb.init(config=args, project=args.project_name)
 # Access all hyperparameter values through wandb.config
 args = wandb.config
 if args.wandb_name:
@@ -121,10 +123,14 @@ if args.seg_thresholds:
     args.update({'seg_thresholds': st}, allow_val_change=True)
     print(f"\n\nSeg_thresholds changed to: {args.seg_thresholds}\n\n")
 
-def example():
-    pl.seed_everything(args.seed)
-    set_determinism(seed=args.seed)
+random.seed(args.seed)
+np.random.seed(args.seed)
+torch.manual_seed(args.seed)
+torch.cuda.manual_seed_all(args.seed)
+set_determinism(seed=args.seed)
+pl.seed_everything(args.seed)
 
+def example():
     augmentations = [("flip", {"spatial_axis": (0, 1, 2), "prob": .5}),
                      ("rotate90", {'spatial_axes': (1, 2), "prob": .5}),
                      ("rotate90", {'spatial_axes': (0, 1), "prob": .5}),
@@ -132,9 +138,9 @@ def example():
                      ("translate", {"mode": ('bilinear', 'nearest'),
                                  "translate_range": (-3, 3),
                                  "prob": .7}),
-                     ("scale", {"mode": ('bilinear', 'nearest'),
-                                 "scale_range": (0.15, 0.15, 0.15), "padding_mode": 'reflection',
-                                 "prob": .7}),
+                     # ("scale", {"mode": ('bilinear', 'nearest'),
+                     #             "scale_range": (0.15, 0.15, 0.15), "padding_mode": 'reflection',
+                     #             "prob": .7}),
                      ]
 
     augmentations = [(n.replace("translate", "affine").replace("scale","affine"), i)
@@ -181,7 +187,7 @@ def example():
                    base_network_config=args.base_network_config,
                    boxes_per_location=args.boxes_per_location,
                    classification_loss=args.classification_loss,
-                   t_max=args.tmax,
+                   t_max=args.max_epochs,
                    step_size=args.step_size,
                    gamma=args.gamma)
     model.init()
@@ -221,11 +227,6 @@ def example():
 
 
 def train_lesions():
-    pl.seed_everything(970205)
-
-    pl.seed_everything(args.seed)
-    set_determinism(seed=args.seed)
-
     augmentations = [("flip", {"spatial_axis": (0, 1, 2), "prob": .5}),
                      ("rotate90", {'spatial_axes': (1, 2), "prob": .5}),
                      ("rotate90", {'spatial_axes': (0, 1), "prob": .5}),
@@ -283,7 +284,7 @@ def train_lesions():
                    base_network_config=args.base_network_config,
                    boxes_per_location=args.boxes_per_location,
                    classification_loss=args.classification_loss,
-                   t_max=args.tmax,
+                   t_max=args.max_epochs,
                    step_size=args.step_size,
                    gamma=args.gamma)
     model.init()

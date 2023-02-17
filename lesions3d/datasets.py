@@ -12,7 +12,7 @@ import yaml
 import os
 from os.path import exists as pexists
 from os.path import join as pjoin
-from utils import BoundingBoxesGeneratord, Printer, ShowImage
+from utils import *
 from random import randint
 from monai.data import Dataset, CacheDataset, DataLoader
 from monai.transforms import (
@@ -37,6 +37,9 @@ from monai.transforms import (
     RandSpatialCropSamplesd,
     RandCropByPosNegLabeld,
     Spacingd,
+    CastToTyped,
+    RandGaussianSmoothd,
+    RandGaussianNoised,
 )
 import numpy as np
 import matplotlib.pyplot as plt
@@ -146,33 +149,40 @@ def collate_fn_predict(batch):
 
 def get_transform_from_name(name, **kwargs):
     TRANSFORMS = {
-        "load_image": (LoadImaged, ["img", "seg"]),
-        "orientation": (Orientationd, ["img", "seg"]),
         "add_channel": (AddChanneld, ["img", "seg"]),
         "add_channel_img": (AddChanneld, ["img"]),
         "add_channel_seg": (AddChanneld, ["seg"]),
-        # "scale_intensity": (ScaleIntensityd, ['img']),
-        "normalizeintensity": (NormalizeIntensityd, ["img"]),
-        "crop_foreground": (CropForegroundd, ["img", "seg"]),
-        "resize_with_pad_or_crop": (ResizeWithPadOrCropd, ['img', 'seg']),
-        "bounding_boxes_generator": (BoundingBoxesGeneratord, ["seg"]),
-        "to_tensor": (ToTensord, ["img"]),
-        "rotate90": (RandRotate90d, ["img", "seg"]),  # kwargs = {'spatial_axes' = (1,2)}
-        "zoom": (RandZoomd, ["img", "seg"]),
-        "griddistortion": (RandGridDistortiond, ["img", "seg"]),  # {"padding_mode": "zeros"}
-        "flip": (RandFlipd, ["img", "seg"]),  # spatial_axis=(0 ,1 ,2)
         "affine": (RandAffined, ["img", "seg"]),
-        # mode=('bilinear', 'nearest'), rotate_range=(np.pi /12, np.pi /12, np.pi /12),  scale_range=(0.1, 0.1, 0.1), padding_mode='border'
-        "shiftintensity": (RandShiftIntensityd, ["img"]),
-        "scaleintensity": (RandScaleIntensityd, ["img"]),
-        "spacing": (Spacingd, ["img", "seg"]),
-        "fgbg_to_indices": (FgBgToIndicesd, ["seg"]),
-        "spatial_crop_samples": (RandSpatialCropSamplesd, ["img", "seg"]),
+        "bounding_boxes_generator": (BoundingBoxesGeneratord, ["seg"]),
+        "cast_to_type_img": (CastToTyped, ["img"]),
+        "cast_to_type_seg": (CastToTyped, ["seg"]),
+        "correct_label_affine": (CorrectLabelAffined, ["img", "seg"]),
         "crop_by_pos_neg": (RandCropByPosNegLabeld, ["img", "seg"]),
+        "crop_foreground": (CropForegroundd, ["img", "seg"]),
+        "fgbg_to_indices": (FgBgToIndicesd, ["seg"]),
+        "flip": (RandFlipd, ["img", "seg"]),  # spatial_axis=(0 ,1 ,2)
+        "gaussian_noise": (RandGaussianNoised, ["img"]),
+        "gaussian_smooth": (RandGaussianSmoothd, ["img"]),
+        "griddistortion": (RandGridDistortiond, ["img", "seg"]),  # {"padding_mode": "zeros"}
+        "load_image": (LoadImaged, ["img", "seg"]),
+        "normalizeintensity": (NormalizeIntensityd, ["img"]),
+        "orientation": (Orientationd, ["img", "seg"]),
+        "resize_with_pad_or_crop": (ResizeWithPadOrCropd, ['img', 'seg']),
+        "rotate90": (RandRotate90d, ["img", "seg"]),  # kwargs = {'spatial_axes' = (1,2)}
+        "scale_intensity": (ScaleIntensityd, ['img']),
+        "scaleintensity": (RandScaleIntensityd, ["img"]),
+        "shiftintensity": (RandShiftIntensityd, ["img"]),
+        "spacing": (Spacingd, ["img", "seg"]),
+        "spatial_crop_samples": (RandSpatialCropSamplesd, ["img", "seg"]),
+        "to_tensor": (ToTensord, ["img"]),
+        "zoom": (RandZoomd, ["img", "seg"]),
+
     }
 
     transform, keys = TRANSFORMS[name]
     return transform(keys=keys, **kwargs)
+
+CastToTyped(keys=["image"], dtype=(torch.float32)),
 
 
 class LesionsDataModule(pl.LightningDataModule):
@@ -494,7 +504,7 @@ class ObjectDetectionDataset(pl.LightningDataModule):
         """
         base_list_start = [("load_image", {}),
                            ("add_channel_seg", {}),
-                           ("orientation", {"axcodes": "LPI"}),
+                           ("orientation", {"axcodes": "RAS"}),
                            ("spacing", {'pixdim': (1.0, 1.0, 1.0), "mode": ("bilinear", "nearest")}),
                            # ("crop_foreground", {"source_key": "img", "mode": "constant", "margin": 5}),
                            ("normalizeintensity", {"nonzero": True}), ]
@@ -513,7 +523,7 @@ class ObjectDetectionDataset(pl.LightningDataModule):
             return list_of_transforms
 
         if self.patch_size != self.image_size:  # patching if needed
-            base_list_start += [("crop_by_pos_neg", {"pos": 1, "neg": 7, "label_key": "seg",
+            base_list_start += [("crop_by_pos_neg", {"pos": 1, "neg": 3, "label_key": "seg",
                                                      "spatial_size": self.patch_size, "num_samples": self.num_samples})]
 
         base_list_end = [("bounding_boxes_generator", {"segmentation_mode": self.segmentation_mode,

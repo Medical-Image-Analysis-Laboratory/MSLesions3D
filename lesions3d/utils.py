@@ -848,3 +848,13 @@ class Printer(Callable):
         else:
             print(self.string, f"({type(arg)})")
         return arg
+
+
+class CorrectLabelAffined(MapTransform):
+    def __init__(self, keys) -> None:
+        super().__init__(keys)
+
+    def __call__(self, data):
+        d = dict(data)
+        d["label_meta_dict"]["affine"] = d["image_meta_dict"]["affine"]
+        return d
