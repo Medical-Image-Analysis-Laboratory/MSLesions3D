@@ -27,6 +27,7 @@ parser.add_argument('-wp', '--wandb_project_name', type=str, help="wandb project
 parser.add_argument('-d', '--dataset_path', type=str, help="path to dataset used for training and validation",
                     default=r'../data/artificial_dataset')
 parser.add_argument('-dn', '--dataset_name', type=str, help="name of dataset to use", default="#3k_64_n1-5_s6-14")
+parser.add_argument('-f', '--fold', type=int, help="fold number", default=0)
 parser.add_argument('-seqs', '--sequences', type=str, nargs='+', help="sequences to use for training",
                     default=('FLAIR', 'acq-phase_T2star'))
 parser.add_argument('-mf', '--metadata_file', type=str, help="metadata fileto use for training", default=None)
@@ -97,7 +98,7 @@ try:
 except:
     print("WandB Not running. Initializing!")
 # Pass them to wandb.init
-wandb.init(config=args, project=args.project_name)
+wandb.init(config=args, project=args.wandb_project_name)
 # Access all hyperparameter values through wandb.config
 args = wandb.config
 if args.wandb_name:
@@ -264,7 +265,6 @@ def train_lesions():
     dummy_input = dataset.train_dataset[0]
     dummy_input = dummy_input if type(dummy_input) == dict else dummy_input[0]
     input_size = tuple(dummy_input["img"].shape)[1:]
-
     model = LSSD3D(n_classes=args.n_classes + 1,
                    input_channels=len(args.sequences),
                    lr=args.learning_rate,

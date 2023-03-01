@@ -562,9 +562,22 @@ class ObjectDetectionDataset(pl.LightningDataModule):
     def setup(self, stage=None, perform_split=True, fold=None, n_splits=4):
         DS = CacheDataset if self.cache else Dataset
         self.fold = fold
-
+        
         if self.subject is not None:
             self.trainsubs, self.valsubs = [self.subject], [self.subject]
+            data_train = [
+                {'img': [pjoin(self.data_dir, "imagesTr", f"{s}_{iid}.nii.gz") for iid in self.input_image_ids],
+                 'seg': pjoin(self.data_dir, "labelsTr", f"{s}_{self.seg_filename}.nii.gz"),
+                 'subject': s} for s in self.trainsubs]
+
+            data_val = [
+                {'img': [pjoin(self.data_dir, "imagesTr", f"{s}_{iid}.nii.gz") for iid in self.input_image_ids],
+                 'seg': pjoin(self.data_dir, "labelsTr", f"{s}_{self.seg_filename}.nii.gz"),
+                 'subject': s} for s in self.valsubs]
+            
+            self.train_dataset = DS(data=data_train, transform=self.train_transform)
+            self.val_dataset = DS(data=data_val, transform=self.test_transform)
+            return
 
         if self.percentage == -1:
             random_subj = randint(0, len(self.all_trainsubs))
