@@ -510,7 +510,7 @@ class ObjectDetectionDataset(pl.LightningDataModule):
                            ("normalizeintensity", {"nonzero": True}), ]
 
         if len(self.input_images) == 1:  # add channel dimension if only one input channel
-            base_list_start.insert(("add_channel_img", {}), 1)
+            base_list_start.insert(1, ("add_channel_img", {}))
 
         list_of_transforms = list()
 
